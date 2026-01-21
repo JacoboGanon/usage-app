@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { RecentUsagesData, RecentUsageEntry } from '../../types/usage'
+import type { RecentUsagesData, RecentUsageEntry, UsageFilterMode, ProviderFilter } from '../../types/usage'
+import { ProviderFilterDropdown } from './ProviderFilterDropdown'
+
+const FILTER_MODE_STORAGE_KEY = 'usageConsole:recentUsagesFilterMode'
+const PROVIDER_FILTER_STORAGE_KEY = 'usageConsole:recentUsagesProviderFilter'
 
 interface RecentUsagesTableProps {
   className?: string
@@ -102,25 +106,18 @@ function UsageRow({ entry }: { entry: RecentUsageEntry }) {
         <span className="text-slate-400 text-sm font-mono">{formatModel(entry.model)}</span>
       </td>
       <td className="py-3 px-4 text-right">
-        <div className="flex flex-col items-end gap-0.5">
-          <span className="text-slate-300 text-sm font-mono">{formatTokens(entry.inputTokens)}</span>
-          <span className="text-slate-500 text-[10px]">in</span>
-        </div>
+        <span className="text-slate-300 text-sm font-mono">
+          {formatTokens(entry.inputTokens + entry.cacheCreationTokens + entry.cacheReadTokens)}
+        </span>
       </td>
       <td className="py-3 px-4 text-right">
-        <div className="flex flex-col items-end gap-0.5">
-          <span className="text-slate-300 text-sm font-mono">{formatTokens(entry.outputTokens)}</span>
-          <span className="text-slate-500 text-[10px]">out</span>
-        </div>
+        <span className="text-slate-300 text-sm font-mono">{formatTokens(entry.outputTokens)}</span>
       </td>
       <td className="py-3 px-4 text-right">
         {(entry.cacheCreationTokens > 0 || entry.cacheReadTokens > 0) ? (
-          <div className="flex flex-col items-end gap-0.5">
-            <span className="text-cyan-400 text-sm font-mono">
-              {formatTokens(entry.cacheCreationTokens + entry.cacheReadTokens)}
-            </span>
-            <span className="text-slate-500 text-[10px]">cache</span>
-          </div>
+          <span className="text-cyan-400 text-sm font-mono">
+            {formatTokens(entry.cacheReadTokens)}
+          </span>
         ) : (
           <span className="text-slate-600 text-sm">-</span>
         )}
@@ -134,12 +131,60 @@ function UsageRow({ entry }: { entry: RecentUsageEntry }) {
   )
 }
 
+const PAGE_SIZE = 50
+
+function getStoredFilterMode(): UsageFilterMode {
+  try {
+    const stored = localStorage.getItem(FILTER_MODE_STORAGE_KEY)
+    if (stored === 'session' || stored === 'monthly') {
+      return stored
+    }
+  } catch {
+    // localStorage not available
+  }
+  return 'session'
+}
+
+function storeFilterMode(mode: UsageFilterMode): void {
+  try {
+    localStorage.setItem(FILTER_MODE_STORAGE_KEY, mode)
+  } catch {
+    // localStorage not available
+  }
+}
+
+function getStoredProviderFilter(): ProviderFilter {
+  try {
+    const stored = localStorage.getItem(PROVIDER_FILTER_STORAGE_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      if (Array.isArray(parsed)) {
+        return parsed.filter(p => ['claude', 'codex', 'cursor'].includes(p))
+      }
+    }
+  } catch {
+    // localStorage not available or invalid JSON
+  }
+  return [] // Empty array means "all providers"
+}
+
+function storeProviderFilter(providers: ProviderFilter): void {
+  try {
+    localStorage.setItem(PROVIDER_FILTER_STORAGE_KEY, JSON.stringify(providers))
+  } catch {
+    // localStorage not available
+  }
+}
+
 export function RecentUsagesTable({ className = '' }: RecentUsagesTableProps) {
   const [data, setData] = useState<RecentUsagesData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [filterMode, setFilterMode] = useState<UsageFilterMode>(getStoredFilterMode)
+  const [providerFilter, setProviderFilter] = useState<ProviderFilter>(getStoredProviderFilter)
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (page = currentPage, mode = filterMode, providers = providerFilter) => {
     try {
       if (!window.electronAPI?.usage?.getRecentUsages) {
         setError('API not available')
@@ -147,7 +192,7 @@ export function RecentUsagesTable({ className = '' }: RecentUsagesTableProps) {
         return
       }
 
-      const result = await window.electronAPI.usage.getRecentUsages(50)
+      const result = await window.electronAPI.usage.getRecentUsages(page, PAGE_SIZE, mode, providers)
       setData(result)
       setError(null)
     } catch (err) {
@@ -155,15 +200,37 @@ export function RecentUsagesTable({ className = '' }: RecentUsagesTableProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [currentPage, filterMode, providerFilter])
+
+  const goToPage = useCallback((page: number) => {
+    setCurrentPage(page)
+    setIsLoading(true)
+    fetchData(page, filterMode, providerFilter)
+  }, [fetchData, filterMode, providerFilter])
+
+  const handleFilterModeChange = useCallback((mode: UsageFilterMode) => {
+    setFilterMode(mode)
+    storeFilterMode(mode)
+    setCurrentPage(1)
+    setIsLoading(true)
+    fetchData(1, mode, providerFilter)
+  }, [fetchData, providerFilter])
+
+  const handleProviderFilterChange = useCallback((providers: ProviderFilter) => {
+    setProviderFilter(providers)
+    storeProviderFilter(providers)
+    setCurrentPage(1)
+    setIsLoading(true)
+    fetchData(1, filterMode, providers)
+  }, [fetchData, filterMode])
 
   useEffect(() => {
-    fetchData()
+    fetchData(currentPage, filterMode, providerFilter)
 
     // Refresh every 60 seconds
-    const interval = setInterval(fetchData, 60000)
+    const interval = setInterval(() => fetchData(currentPage, filterMode, providerFilter), 60000)
     return () => clearInterval(interval)
-  }, [fetchData])
+  }, [fetchData, currentPage, filterMode, providerFilter])
 
   if (isLoading) {
     return (
@@ -191,9 +258,59 @@ export function RecentUsagesTable({ className = '' }: RecentUsagesTableProps) {
   if (!data || data.entries.length === 0) {
     return (
       <section className={`usage-card animate-scale-in ${className}`}>
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-base font-medium text-white tracking-tight">Recent Usages</h2>
+            <span className="font-mono text-[10px] text-slate-500 uppercase tracking-widest">
+              Token Usage & Costs
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Provider Filter */}
+            <ProviderFilterDropdown value={providerFilter} onChange={handleProviderFilterChange} />
+
+            {/* Filter Mode Toggle */}
+            <div className="flex items-center gap-1 p-1 bg-white/5 rounded-lg border border-white/10">
+              <button
+                onClick={() => handleFilterModeChange('session')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  filterMode === 'session'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                    : 'text-slate-400 hover:text-slate-300 hover:bg-white/5'
+                }`}
+              >
+                Session
+              </button>
+              <button
+                onClick={() => handleFilterModeChange('monthly')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  filterMode === 'monthly'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                    : 'text-slate-400 hover:text-slate-300 hover:bg-white/5'
+                }`}
+              >
+                Monthly
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-[10px] text-slate-500 uppercase tracking-widest">
+              {filterMode === 'session' ? 'Session Cost' : 'Monthly Cost'}
+            </span>
+            <span className="font-mono text-lg text-amber-400 font-semibold">
+              $0.0000
+            </span>
+          </div>
+        </div>
         <div className="flex flex-col items-center justify-center py-12 gap-2">
-          <span className="text-slate-400">No recent usage data found</span>
-          <span className="text-slate-500 text-sm">Usage will appear here as you use Claude Code, Codex, or Cursor</span>
+          <span className="text-slate-400">
+            {filterMode === 'session' ? 'No usage since app started' : 'No usage this month'}
+          </span>
+          <span className="text-slate-500 text-sm">
+            Usage will appear here as you use Claude Code, Codex, or Cursor
+          </span>
         </div>
       </section>
     )
@@ -208,8 +325,40 @@ export function RecentUsagesTable({ className = '' }: RecentUsagesTableProps) {
             Token Usage & Costs
           </span>
         </div>
+
+        <div className="flex items-center gap-3">
+          {/* Provider Filter */}
+          <ProviderFilterDropdown value={providerFilter} onChange={handleProviderFilterChange} />
+
+          {/* Filter Mode Toggle */}
+          <div className="flex items-center gap-1 p-1 bg-white/5 rounded-lg border border-white/10">
+            <button
+              onClick={() => handleFilterModeChange('session')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                filterMode === 'session'
+                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                  : 'text-slate-400 hover:text-slate-300 hover:bg-white/5'
+              }`}
+            >
+              Session
+            </button>
+            <button
+              onClick={() => handleFilterModeChange('monthly')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                filterMode === 'monthly'
+                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                  : 'text-slate-400 hover:text-slate-300 hover:bg-white/5'
+              }`}
+            >
+              Monthly
+            </button>
+          </div>
+        </div>
+
         <div className="flex flex-col items-end gap-0.5">
-          <span className="text-[10px] text-slate-500 uppercase tracking-widest">Total Cost</span>
+          <span className="text-[10px] text-slate-500 uppercase tracking-widest">
+            {filterMode === 'session' ? 'Session Cost' : 'Monthly Cost'}
+          </span>
           <span className="font-mono text-lg text-amber-400 font-semibold">
             {formatCost(data.totalCost)}
           </span>
@@ -253,17 +402,50 @@ export function RecentUsagesTable({ className = '' }: RecentUsagesTableProps) {
 
       <div className="flex justify-between items-center mt-4 pt-4 border-t border-white/5">
         <span className="text-slate-500 text-xs">
-          Showing {data.entries.length} most recent entries
+          Showing {((data.page - 1) * data.pageSize) + 1}-{Math.min(data.page * data.pageSize, data.totalCount)} of {data.totalCount} entries
         </span>
-        <button
-          onClick={fetchData}
-          className="text-xs text-slate-400 hover:text-white transition-colors flex items-center gap-1.5"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          Refresh
-        </button>
+
+        <div className="flex items-center gap-3">
+          {/* Pagination controls */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="p-1.5 text-slate-400 hover:text-white disabled:text-slate-600 disabled:cursor-not-allowed transition-colors rounded hover:bg-white/5"
+              title="Previous page"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+
+            <span className="text-xs text-slate-400 px-2 min-w-[80px] text-center">
+              Page {data.page} of {data.totalPages}
+            </span>
+
+            <button
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage >= data.totalPages}
+              className="p-1.5 text-slate-400 hover:text-white disabled:text-slate-600 disabled:cursor-not-allowed transition-colors rounded hover:bg-white/5"
+              title="Next page"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Refresh button */}
+          <button
+            onClick={() => fetchData(currentPage, filterMode, providerFilter)}
+            className="text-xs text-slate-400 hover:text-white transition-colors flex items-center gap-1.5"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+          </button>
+        </div>
       </div>
     </section>
   )

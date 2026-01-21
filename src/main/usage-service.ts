@@ -138,6 +138,7 @@ interface CredentialsFile {
     accessToken?: string
     expiresAt?: number
     subscriptionType?: string
+    rateLimitTier?: string
   }
 }
 
@@ -178,6 +179,7 @@ function parseKeychainValue(value: string): TokenResult | null {
         return {
           token: oauth.accessToken,
           subscriptionType: oauth.subscriptionType || 'Unknown',
+          rateLimitTier: oauth.rateLimitTier,
           source: 'keychain'
         }
       }
@@ -256,6 +258,7 @@ async function getTokenFromCredentialsFile(): Promise<TokenResult | null> {
     return {
       token: oauth.accessToken,
       subscriptionType: oauth.subscriptionType || 'Unknown',
+      rateLimitTier: oauth.rateLimitTier,
       source: 'credentials_file'
     }
   } catch (error) {
@@ -306,7 +309,7 @@ export async function fetchUsage(accessToken: string): Promise<ClaudeApiUsageRes
 /**
  * Parses usage response into a normalized format
  */
-function parseUsageResponse(usage: ClaudeApiUsageResponse, subscriptionType = 'Unknown'): ClaudeUsageData {
+function parseUsageResponse(usage: ClaudeApiUsageResponse, subscriptionType = 'Unknown', rateLimitTier?: string): ClaudeUsageData {
   const parseResetTime = (resets_at?: string): string | null => {
     if (!resets_at) return null
     try {
@@ -319,6 +322,7 @@ function parseUsageResponse(usage: ClaudeApiUsageResponse, subscriptionType = 'U
   return {
     hasCredentials: true,
     subscriptionType,
+    rateLimitTier: rateLimitTier || null,
     sessionUsagePercent: (usage.five_hour?.utilization ?? 0) / 100,
     sessionResetTime: parseResetTime(usage.five_hour?.resets_at),
     weeklyUsagePercent: (usage.seven_day?.utilization ?? 0) / 100,
@@ -337,6 +341,7 @@ function createErrorUpdate(error: string, hasCredentials = false, subscriptionTy
   return {
     hasCredentials,
     subscriptionType,
+    rateLimitTier: null,
     sessionUsagePercent: 0,
     sessionResetTime: null,
     weeklyUsagePercent: 0,
@@ -360,7 +365,7 @@ async function getClaudeUsageUpdate(): Promise<ClaudeUsageData> {
     }
 
     const usage = await fetchUsage(tokenResult.token)
-    return parseUsageResponse(usage, tokenResult.subscriptionType || 'Unknown')
+    return parseUsageResponse(usage, tokenResult.subscriptionType || 'Unknown', tokenResult.rateLimitTier)
   } catch (error) {
     console.error('Failed to fetch usage:', (error as Error).message)
     return createErrorUpdate((error as Error).message, true)
@@ -654,4 +659,31 @@ export function setPollInterval(nextIntervalMs: number): number {
  */
 export function getPollInterval(): number {
   return pollIntervalMs
+}
+
+export type ProviderName = 'claude' | 'codex' | 'cursor'
+
+/**
+ * Refreshes usage data for a specific provider
+ */
+export async function refreshProvider(provider: ProviderName): Promise<UsageUpdate> {
+  console.log(`[UsageService] Refreshing ${provider} usage...`)
+
+  // Get current cached values for other providers (we'll use the last known values)
+  const currentUpdate = await getUsageUpdate()
+
+  // Fetch fresh data for the requested provider
+  switch (provider) {
+    case 'claude':
+      currentUpdate.claude = await getClaudeUsageUpdate()
+      break
+    case 'codex':
+      currentUpdate.codex = await getCodexUsageUpdate()
+      break
+    case 'cursor':
+      currentUpdate.cursor = await getCursorUsageUpdate()
+      break
+  }
+
+  return currentUpdate
 }

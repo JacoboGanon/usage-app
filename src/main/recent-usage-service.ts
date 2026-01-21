@@ -1,7 +1,7 @@
 import { readFile, readdir, stat } from 'fs/promises'
 import { join, basename, dirname } from 'path'
 import { homedir } from 'os'
-import type { RecentUsageEntry, RecentUsagesData, LiteLLMPricingData, ModelPricing } from '../types/usage'
+import type { RecentUsageEntry, RecentUsagesData, LiteLLMPricingData, ModelPricing, UsageFilterMode, ProviderFilter, ProviderName } from '../types/usage'
 import { getCursorToken } from './usage-service'
 
 const LITELLM_PRICING_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json'
@@ -14,11 +14,29 @@ let pricingCache: LiteLLMPricingData | null = null
 let pricingCacheTime = 0
 const PRICING_CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
 
+// App start time for session filtering
+let appStartTime: Date = new Date()
+
+/**
+ * Sets the app start time for session filtering
+ */
+export function setAppStartTime(time: Date): void {
+  appStartTime = time
+}
+
+/**
+ * Gets the app start time
+ */
+export function getAppStartTime(): Date {
+  return appStartTime
+}
+
 interface ClaudeJSONLEntry {
   type?: string
   message?: {
     role?: string
     model?: string
+    stop_reason?: string | null
     usage?: {
       input_tokens?: number
       output_tokens?: number
@@ -43,18 +61,27 @@ interface CodexJSONLEntry {
 }
 
 interface CursorUsageEvent {
-  createdAt?: string
+  timestamp?: string
   model?: string
-  inputTokens?: number
-  outputTokens?: number
-  cacheHits?: number
-  cacheMisses?: number
+  kind?: string
+  maxMode?: boolean
+  usageBasedCosts?: string
+  isTokenBasedCall?: boolean
+  tokenUsage?: {
+    inputTokens?: number
+    outputTokens?: number
+    cacheHits?: number
+    cacheMisses?: number
+  }
+  owningUser?: string
+  cursorTokenFee?: number
+  isChargeable?: boolean
+  isHeadless?: boolean
 }
 
 interface CursorUsageResponse {
-  events?: CursorUsageEvent[]
-  hasMore?: boolean
-  nextOffset?: number
+  totalUsageEventsCount: number
+  usageEventsDisplay: CursorUsageEvent[]
 }
 
 /**
@@ -192,10 +219,13 @@ async function parseClaudeJSONLFile(
       try {
         const entry: ClaudeJSONLEntry = JSON.parse(line)
 
-        // Only process assistant messages with usage data
-        if (entry.type === 'assistant' && entry.message?.usage) {
-          const usage = entry.message.usage
-          const model = entry.message.model || 'unknown'
+        // Process entries with usage data
+        // Accept: entries with type='assistant' and message.usage, OR entries with message.usage but no type (usage summary entries)
+        const usage = entry.message?.usage
+        const hasUsageData = usage && (usage.input_tokens != null || usage.output_tokens != null)
+        const isValidEntry = hasUsageData && (entry.type === 'assistant' || entry.type === undefined)
+        if (isValidEntry && usage) {
+          const model = entry.message?.model || 'unknown'
 
           const inputTokens = usage.input_tokens || 0
           const outputTokens = usage.output_tokens || 0
@@ -303,15 +333,13 @@ async function parseCodexJSONLFile(
 }
 
 /**
- * Fetches Cursor usage events from the API
+ * Fetches a single page of Cursor usage events
  */
-async function fetchCursorUsageEvents(
+async function fetchCursorUsagePage(
   sessionToken: string,
-  pricing: LiteLLMPricingData,
-  pageSize = 100
-): Promise<RecentUsageEntry[]> {
-  const entries: RecentUsageEntry[] = []
-
+  page: number,
+  pageSize: number
+): Promise<CursorUsageResponse | null> {
   try {
     const response = await fetch(CURSOR_USAGE_API_URL, {
       method: 'POST',
@@ -320,48 +348,105 @@ async function fetchCursorUsageEvents(
         'Origin': 'https://cursor.com',
         'Cookie': `WorkosCursorSessionToken=${sessionToken}`
       },
-      body: JSON.stringify({ pageSize })
+      body: JSON.stringify({ pageSize, page })
     })
 
     if (!response.ok) {
-      console.error('Failed to fetch Cursor usage events:', response.status)
-      return entries
+      console.error(`Failed to fetch Cursor usage events page ${page}:`, response.status)
+      return null
     }
 
-    const data: CursorUsageResponse = await response.json()
-
-    if (data.events && Array.isArray(data.events)) {
-      for (const event of data.events) {
-        const model = event.model || 'unknown'
-        const inputTokens = event.inputTokens || 0
-        const outputTokens = event.outputTokens || 0
-        const cacheReadTokens = event.cacheHits || 0
-        const cacheCreationTokens = event.cacheMisses || 0
-        const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens
-
-        const cost = calculateCost(pricing, model, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens)
-
-        const timestamp = event.createdAt ? new Date(event.createdAt) : new Date()
-
-        entries.push({
-          id: `cursor-${timestamp.getTime()}-${entries.length}`,
-          timestamp,
-          provider: 'cursor',
-          model,
-          inputTokens,
-          outputTokens,
-          cacheCreationTokens,
-          cacheReadTokens,
-          totalTokens,
-          cost
-        })
-      }
-    }
+    return await response.json() as CursorUsageResponse
   } catch (error) {
-    console.error('Error fetching Cursor usage events:', error)
+    console.error(`Error fetching Cursor usage page ${page}:`, error)
+    return null
+  }
+}
+
+/**
+ * Parses Cursor usage events into RecentUsageEntry format
+ */
+function parseCursorEvents(
+  events: CursorUsageEvent[],
+  pricing: LiteLLMPricingData,
+  startIndex: number
+): RecentUsageEntry[] {
+  const entries: RecentUsageEntry[] = []
+
+  for (const event of events) {
+    const model = event.model || 'unknown'
+    const tokenUsage = event.tokenUsage || {}
+    const inputTokens = tokenUsage.inputTokens || 0
+    const outputTokens = tokenUsage.outputTokens || 0
+    const cacheReadTokens = tokenUsage.cacheHits || 0
+    const cacheCreationTokens = tokenUsage.cacheMisses || 0
+    const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens
+
+    const cost = calculateCost(pricing, model, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens)
+
+    // Timestamp is a Unix timestamp in milliseconds as a string
+    const timestamp = event.timestamp ? new Date(parseInt(event.timestamp, 10)) : new Date()
+
+    entries.push({
+      id: `cursor-${timestamp.getTime()}-${startIndex + entries.length}`,
+      timestamp,
+      provider: 'cursor',
+      model,
+      inputTokens,
+      outputTokens,
+      cacheCreationTokens,
+      cacheReadTokens,
+      totalTokens,
+      cost
+    })
   }
 
   return entries
+}
+
+/**
+ * Fetches all Cursor usage events from the API with parallel pagination
+ */
+async function fetchCursorUsageEvents(
+  sessionToken: string,
+  pricing: LiteLLMPricingData,
+  pageSize = 500
+): Promise<RecentUsageEntry[]> {
+  // First request to get total count and first batch
+  const firstPage = await fetchCursorUsagePage(sessionToken, 0, pageSize)
+
+  if (!firstPage || !firstPage.usageEventsDisplay) {
+    return []
+  }
+
+  const totalCount = firstPage.totalUsageEventsCount
+  const allEvents: CursorUsageEvent[] = [...firstPage.usageEventsDisplay]
+
+  console.log(`[Cursor] Total usage events: ${totalCount}, fetched first ${allEvents.length}`)
+
+  // Calculate remaining pages needed
+  const totalPages = Math.ceil(totalCount / pageSize)
+
+  if (totalPages > 1) {
+    // Fetch remaining pages in parallel
+    const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 1)
+
+    console.log(`[Cursor] Fetching ${remainingPages.length} additional pages in parallel...`)
+
+    const pageResults = await Promise.allSettled(
+      remainingPages.map(page => fetchCursorUsagePage(sessionToken, page, pageSize))
+    )
+
+    for (const result of pageResults) {
+      if (result.status === 'fulfilled' && result.value?.usageEventsDisplay) {
+        allEvents.push(...result.value.usageEventsDisplay)
+      }
+    }
+
+    console.log(`[Cursor] Total events fetched: ${allEvents.length}`)
+  }
+
+  return parseCursorEvents(allEvents, pricing, 0)
 }
 
 /**
@@ -386,60 +471,106 @@ async function getMostRecentFiles(files: string[], limit: number): Promise<strin
 }
 
 /**
- * Fetches recent usage data from local JSONL files and APIs
+ * Gets the start of the current month
  */
-export async function getRecentUsages(limit = 50): Promise<RecentUsagesData> {
+function getStartOfMonth(): Date {
+  const now = new Date()
+  return new Date(now.getFullYear(), now.getMonth(), 1)
+}
+
+/**
+ * Filters entries based on the filter mode
+ */
+function filterEntries(entries: RecentUsageEntry[], filterMode: UsageFilterMode): RecentUsageEntry[] {
+  const cutoffTime = filterMode === 'session' ? appStartTime : getStartOfMonth()
+
+  return entries.filter(entry => entry.timestamp.getTime() >= cutoffTime.getTime())
+}
+
+const ALL_PROVIDERS: ProviderName[] = ['claude', 'codex', 'cursor']
+
+/**
+ * Fetches recent usage data from local JSONL files and APIs with pagination
+ */
+export async function getRecentUsages(
+  page = 1,
+  pageSize = 50,
+  filterMode: UsageFilterMode = 'session',
+  providers: ProviderFilter = ALL_PROVIDERS
+): Promise<RecentUsagesData> {
   const pricing = await fetchLiteLLMPricing()
   const allEntries: RecentUsageEntry[] = []
 
-  // Get Claude usage from JSONL files
-  try {
-    const claudeFiles = await findJSONLFiles(CLAUDE_PROJECTS_DIR)
-    const recentClaudeFiles = await getMostRecentFiles(claudeFiles, 20)
+  // Normalize providers - if empty array, show all
+  const activeProviders = providers.length === 0 ? ALL_PROVIDERS : providers
 
-    for (const file of recentClaudeFiles) {
-      const entries = await parseClaudeJSONLFile(file, pricing)
-      allEntries.push(...entries)
+  // Get Claude usage from JSONL files
+  if (activeProviders.includes('claude')) {
+    try {
+      const claudeFiles = await findJSONLFiles(CLAUDE_PROJECTS_DIR)
+      const recentClaudeFiles = await getMostRecentFiles(claudeFiles, 50)
+
+      for (const file of recentClaudeFiles) {
+        const entries = await parseClaudeJSONLFile(file, pricing)
+        allEntries.push(...entries)
+      }
+    } catch (error) {
+      console.error('Error reading Claude usage files:', error)
     }
-  } catch (error) {
-    console.error('Error reading Claude usage files:', error)
   }
 
   // Get Codex usage from JSONL files
-  try {
-    const codexFiles = await findJSONLFiles(CODEX_DIR)
-    const recentCodexFiles = await getMostRecentFiles(codexFiles, 20)
+  if (activeProviders.includes('codex')) {
+    try {
+      const codexFiles = await findJSONLFiles(CODEX_DIR)
+      const recentCodexFiles = await getMostRecentFiles(codexFiles, 50)
 
-    for (const file of recentCodexFiles) {
-      const entries = await parseCodexJSONLFile(file, pricing)
-      allEntries.push(...entries)
+      for (const file of recentCodexFiles) {
+        const entries = await parseCodexJSONLFile(file, pricing)
+        allEntries.push(...entries)
+      }
+    } catch (error) {
+      console.error('Error reading Codex usage files:', error)
     }
-  } catch (error) {
-    console.error('Error reading Codex usage files:', error)
   }
 
-  // Get Cursor usage from API
-  try {
-    const cursorToken = getCursorToken()
-    if (cursorToken) {
-      const cursorEntries = await fetchCursorUsageEvents(cursorToken, pricing, 100)
-      allEntries.push(...cursorEntries)
+  // Get Cursor usage from API (fetches all events with parallel pagination)
+  if (activeProviders.includes('cursor')) {
+    try {
+      const cursorToken = getCursorToken()
+      if (cursorToken) {
+        const cursorEntries = await fetchCursorUsageEvents(cursorToken, pricing)
+        allEntries.push(...cursorEntries)
+      }
+    } catch (error) {
+      console.error('Error fetching Cursor usage:', error)
     }
-  } catch (error) {
-    console.error('Error fetching Cursor usage:', error)
   }
 
-  // Sort by timestamp (most recent first) and limit
-  const sortedEntries = allEntries
-    .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-    .slice(0, limit)
+  // Sort by timestamp (most recent first)
+  const sortedEntries = allEntries.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
 
-  // Calculate total cost
-  const totalCost = sortedEntries.reduce((sum, entry) => sum + entry.cost, 0)
+  // Apply filter based on mode
+  const filteredEntries = filterEntries(sortedEntries, filterMode)
+
+  // Calculate total cost from filtered entries
+  const totalCost = filteredEntries.reduce((sum, entry) => sum + entry.cost, 0)
+  const totalCount = filteredEntries.length
+  const totalPages = Math.ceil(totalCount / pageSize)
+
+  // Paginate
+  const startIndex = (page - 1) * pageSize
+  const paginatedEntries = filteredEntries.slice(startIndex, startIndex + pageSize)
 
   return {
-    entries: sortedEntries,
+    entries: paginatedEntries,
     totalCost,
-    lastUpdated: new Date()
+    totalCount,
+    page,
+    pageSize,
+    totalPages,
+    lastUpdated: new Date(),
+    filterMode,
+    appStartedAt: appStartTime
   }
 }

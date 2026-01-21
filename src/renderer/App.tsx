@@ -7,7 +7,8 @@ import { ErrorPanel } from './components/ErrorPanel'
 import { Footer } from './components/Footer'
 import { SettingsPanel } from './components/SettingsPanel'
 import { useUsageData } from './hooks/useUsageData'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ProviderName } from '../types'
 
 const DEFAULT_POLL_INTERVAL_MS = 30000
 const MIN_POLL_INTERVAL_MS = 5000
@@ -143,13 +144,19 @@ export default function App() {
     return errors[0] || ''
   }, [hasApiError, tracking, claude, codex, cursor, data])
 
+  const handleRefreshProvider = useCallback(async (provider: ProviderName) => {
+    if (window.electronAPI?.usage?.refreshProvider) {
+      await window.electronAPI.usage.refreshProvider(provider)
+    }
+  }, [])
+
   const usageCards = useMemo(() => {
     const cards: JSX.Element[] = []
-    if (tracking.claude) cards.push(<ClaudeUsageCard key="claude" data={data} />)
-    if (tracking.codex) cards.push(<CodexUsageCard key="codex" data={data} />)
-    if (tracking.cursor) cards.push(<CursorUsageCard key="cursor" data={data} />)
+    if (tracking.claude) cards.push(<ClaudeUsageCard key="claude" data={data} onRefresh={() => handleRefreshProvider('claude')} />)
+    if (tracking.codex) cards.push(<CodexUsageCard key="codex" data={data} onRefresh={() => handleRefreshProvider('codex')} />)
+    if (tracking.cursor) cards.push(<CursorUsageCard key="cursor" data={data} onRefresh={() => handleRefreshProvider('cursor')} />)
     return cards
-  }, [tracking, data])
+  }, [tracking, data, handleRefreshProvider])
 
   return (
     <div className={`max-w-[900px] mx-auto p-8 min-h-screen flex flex-col animate-fade-in ${isLoading ? 'loading' : ''}`}>

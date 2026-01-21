@@ -1,15 +1,19 @@
+import { useState } from 'react'
 import { UsageCard } from './UsageCard'
 import { StatusIndicator } from './StatusIndicator'
 import { SubscriptionBadge } from './SubscriptionBadge'
 import { ProgressBar } from './ProgressBar'
+import { RefreshButton } from './RefreshButton'
 import { formatTime } from '../utils/formatters'
 import type { UsageUpdate } from '../../types'
 
 interface CursorUsageCardProps {
   data: UsageUpdate | null
+  onRefresh?: () => Promise<void>
 }
 
-export function CursorUsageCard({ data }: CursorUsageCardProps) {
+export function CursorUsageCard({ data, onRefresh }: CursorUsageCardProps) {
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const cursor = data?.cursor || {} as Partial<UsageUpdate['cursor']>
 
   const getStatus = () => {
@@ -19,14 +23,36 @@ export function CursorUsageCard({ data }: CursorUsageCardProps) {
   }
 
   const { status, text } = getStatus()
-  const totalPercent = Math.round(cursor.totalUsagePercent || 0)
-  const apiPercent = Math.round(cursor.apiUsagePercent || 0)
+
+  // Convert cents to dollars for display
+  const usedDollars = (cursor.usedRequests ?? 0) / 100
+  const limitDollars = (cursor.limitRequests ?? 0) / 100
+
+  // Total Usage: spent / limit
+  const totalPercent = limitDollars > 0 ? Math.round((usedDollars / limitDollars) * 100) : 0
+
+  // Estimated Usage with Bonus: spent / (limit * 2.5)
+  const bonusLimit = limitDollars * 2.5
+  const bonusPercent = bonusLimit > 0 ? Math.round((usedDollars / bonusLimit) * 100) : 0
+
+  const handleRefresh = async () => {
+    if (!onRefresh || isRefreshing) return
+    setIsRefreshing(true)
+    try {
+      await onRefresh()
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
 
   return (
     <UsageCard variant="cursor">
       <div className="flex justify-between items-start mb-6">
         <div className="flex flex-col gap-1">
-          <h2 className="text-base font-medium text-white tracking-tight">Cursor Usage</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-medium text-white tracking-tight">Cursor Usage</h2>
+            <RefreshButton onClick={handleRefresh} isRefreshing={isRefreshing} />
+          </div>
           <span className="font-mono text-[10px] text-slate-500 uppercase tracking-widest">AI Code Editor</span>
         </div>
         <SubscriptionBadge plan={cursor.membershipType} variant="cursor" />
@@ -42,16 +68,16 @@ export function CursorUsageCard({ data }: CursorUsageCardProps) {
 
       <div className="flex flex-col gap-6 mt-4">
         <ProgressBar
-          label="Total usage"
+          label="Total Usage"
           value={totalPercent}
-          windowLabel={`${cursor.usedRequests ?? 0} / ${cursor.limitRequests ?? 0} requests`}
+          windowLabel={`$${usedDollars.toFixed(2)} / $${limitDollars.toFixed(2)}`}
           resetTime={cursor.billingCycleEnd}
           variant="cursor"
         />
         <ProgressBar
-          label="API usage"
-          value={apiPercent}
-          windowLabel={`${cursor.remainingRequests ?? 0} remaining`}
+          label="Estimated Usage with Bonus"
+          value={bonusPercent}
+          windowLabel={`$${usedDollars.toFixed(2)} / $${bonusLimit.toFixed(2)}`}
           resetTime={cursor.billingCycleEnd}
           variant="cursor-secondary"
         />

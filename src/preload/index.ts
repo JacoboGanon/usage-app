@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
-import type { UsageUpdate, RecentUsagesData } from '../types/usage'
+import type { UsageUpdate, RecentUsagesData, ProviderName, UsageFilterMode, ProviderFilter } from '../types/usage'
 
 console.log('[Preload] Script loading...')
 
@@ -50,8 +50,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Get Cursor session token
     getCursorToken: (): Promise<string | null> => ipcRenderer.invoke('get-cursor-token'),
 
-    // Get recent usage data from local JSONL files
-    getRecentUsages: (limit?: number): Promise<RecentUsagesData> => ipcRenderer.invoke('get-recent-usages', limit)
+    // Get recent usage data from local JSONL files with pagination and filtering
+    getRecentUsages: (page?: number, pageSize?: number, filterMode?: UsageFilterMode, providers?: ProviderFilter): Promise<RecentUsagesData> => ipcRenderer.invoke('get-recent-usages', page, pageSize, filterMode, providers),
+
+    // Refresh a specific provider's usage data
+    refreshProvider: (provider: ProviderName): Promise<UsageUpdate> => ipcRenderer.invoke('refresh-provider', provider)
   }
 })
 

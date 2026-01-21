@@ -1,10 +1,14 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
-import { getUsageUpdate, startPolling, stopPolling, getPollInterval, setPollInterval, setCursorToken, getCursorToken, initCursorToken } from './usage-service'
-import { getRecentUsages } from './recent-usage-service'
+import { getUsageUpdate, startPolling, stopPolling, getPollInterval, setPollInterval, setCursorToken, getCursorToken, initCursorToken, refreshProvider, type ProviderName } from './usage-service'
+import { getRecentUsages, setAppStartTime } from './recent-usage-service'
+import type { UsageFilterMode, ProviderFilter } from '../types/usage'
 
 let mainWindow: BrowserWindow | null = null
+
+// Track when the app started for session filtering
+const appStartedAt = new Date()
 
 function createWindow() {
   const preloadPath = join(__dirname, '../preload/index.mjs')
@@ -67,13 +71,25 @@ ipcMain.handle('get-cursor-token', () => {
   return getCursorToken()
 })
 
-ipcMain.handle('get-recent-usages', async (_event, limit?: number) => {
-  return await getRecentUsages(limit)
+ipcMain.handle('get-recent-usages', async (_event, page?: number, pageSize?: number, filterMode?: UsageFilterMode, providers?: ProviderFilter) => {
+  return await getRecentUsages(page, pageSize, filterMode, providers)
+})
+
+ipcMain.handle('refresh-provider', async (_event, provider: ProviderName) => {
+  const update = await refreshProvider(provider)
+  // Also broadcast the update to keep the UI in sync
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('usage-update', update)
+  }
+  return update
 })
 
 app.whenReady().then(async () => {
   // Initialize stored cursor token before creating window
   await initCursorToken()
+
+  // Set app start time for session filtering
+  setAppStartTime(appStartedAt)
 
   createWindow()
 

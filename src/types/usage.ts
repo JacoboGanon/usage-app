@@ -1,6 +1,7 @@
 export interface ClaudeUsageData {
   hasCredentials: boolean
   subscriptionType: string
+  rateLimitTier: string | null
   sessionUsagePercent: number
   sessionResetTime: string | null
   weeklyUsagePercent: number
@@ -43,10 +44,17 @@ export interface UsageUpdate {
   cursor: CursorUsageData
 }
 
+export type ProviderName = 'claude' | 'codex' | 'cursor'
+
+export type UsageFilterMode = 'session' | 'monthly'
+
+export type ProviderFilter = ProviderName[]
+
 export interface TokenResult {
   token: string
   source: string
   subscriptionType?: string
+  rateLimitTier?: string
 }
 
 // LiteLLM pricing data
@@ -83,5 +91,11 @@ export interface RecentUsageEntry {
 export interface RecentUsagesData {
   entries: RecentUsageEntry[]
   totalCost: number
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
   lastUpdated: Date
+  filterMode: UsageFilterMode
+  appStartedAt?: Date
 }
