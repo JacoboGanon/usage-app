@@ -20,7 +20,7 @@ A beautiful desktop app to monitor your API usage and spending across all your A
 
 ### Download
 
-Download the latest release for your platform from the [Releases](https://github.com/jacobo/usage-app/releases) page:
+Download the latest release for your platform from the [Releases](https://github.com/JacoboGanon/usage-app/releases) page:
 
 - **macOS** - `.dmg` (Universal: Intel + Apple Silicon)
 - **Windows** - `.exe` (NSIS installer or portable)
@@ -34,7 +34,7 @@ Requirements:
 
 ```bash
 # Clone the repository
-git clone https://github.com/jacobo/usage-app.git
+git clone https://github.com/JacoboGanon/usage-app.git
 cd usage-app
 
 # Install dependencies

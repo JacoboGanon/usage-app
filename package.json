@@ -1,7 +1,27 @@
 {
   "name": "usage-app-monorepo",
+  "version": "1.0.0",
   "private": true,
+  "description": "Desktop app to monitor API usage across Claude, Codex, and Cursor",
+  "author": "Jacobo Ganon",
   "license": "MIT",
+  "homepage": "https://github.com/JacoboGanon/usage-app#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JacoboGanon/usage-app.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JacoboGanon/usage-app/issues"
+  },
+  "keywords": [
+    "electron",
+    "api-usage",
+    "claude",
+    "cursor",
+    "codex",
+    "monitoring",
+    "desktop-app"
+  ],
   "packageManager": "bun@1.3.4",
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
