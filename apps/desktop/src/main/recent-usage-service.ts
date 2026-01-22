@@ -1,7 +1,7 @@
 import { readFile, readdir, stat } from 'fs/promises'
 import { join, basename, dirname } from 'path'
 import { homedir } from 'os'
-import type { RecentUsageEntry, RecentUsagesData, LiteLLMPricingData, ModelPricing, UsageFilterMode, ProviderFilter, ProviderName } from '../types/usage'
+import type { RecentUsageEntry, RecentUsagesData, UsageChartData, LiteLLMPricingData, ModelPricing, UsageFilterMode, ProviderFilter, ProviderName } from '../types/usage'
 import { getCursorToken } from './usage-service'
 
 const LITELLM_PRICING_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json'
@@ -727,6 +727,96 @@ export async function getRecentUsages(
     page,
     pageSize,
     totalPages,
+    lastUpdated: new Date(),
+    filterMode,
+    appStartedAt: appStartTime
+  }
+}
+
+/**
+ * Fetches all usage data for charts (no pagination)
+ */
+export async function getChartData(
+  filterMode: UsageFilterMode = 'session',
+  providers: ProviderFilter = ALL_PROVIDERS
+): Promise<UsageChartData> {
+  const pricing = await fetchLiteLLMPricing()
+  const allEntries: RecentUsageEntry[] = []
+
+  // Normalize providers - if empty array, show all
+  const activeProviders = providers.length === 0 ? ALL_PROVIDERS : providers
+
+  // Get Claude usage from JSONL files (check all possible directories)
+  if (activeProviders.includes('claude')) {
+    try {
+      const claudeDirs = getClaudeProjectsDirs()
+      const allClaudeFiles: string[] = []
+
+      // Collect files from all Claude directories
+      for (const dir of claudeDirs) {
+        try {
+          const files = await findJSONLFiles(dir)
+          allClaudeFiles.push(...files)
+        } catch {
+          // Directory not accessible
+        }
+      }
+
+      // Sort files by modification time (most recent first) for better deduplication
+      const sortedClaudeFiles = await getMostRecentFiles(allClaudeFiles, allClaudeFiles.length)
+
+      // Shared set for deduplication across all files (ccusage approach)
+      const processedHashes = new Set<string>()
+
+      for (const file of sortedClaudeFiles) {
+        const entries = await parseClaudeJSONLFile(file, pricing, processedHashes)
+        allEntries.push(...entries)
+      }
+    } catch (error) {
+      console.error('[ClaudeUsage] Error reading Claude usage files:', error)
+    }
+  }
+
+  // Get Codex usage from JSONL files
+  if (activeProviders.includes('codex')) {
+    try {
+      const codexFiles = await findJSONLFiles(CODEX_DIR)
+
+      for (const file of codexFiles) {
+        const entries = await parseCodexJSONLFile(file, pricing)
+        allEntries.push(...entries)
+      }
+    } catch (error) {
+      console.error('Error reading Codex usage files:', error)
+    }
+  }
+
+  // Get Cursor usage from API (fetches all events with parallel pagination)
+  if (activeProviders.includes('cursor')) {
+    try {
+      const cursorToken = getCursorToken()
+      if (cursorToken) {
+        const cursorEntries = await fetchCursorUsageEvents(cursorToken, pricing)
+        allEntries.push(...cursorEntries)
+      }
+    } catch {
+      // Failed to fetch Cursor usage
+    }
+  }
+
+  // Sort by timestamp (most recent first)
+  const sortedEntries = allEntries.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+
+  // Apply filter based on mode
+  const filteredEntries = filterEntries(sortedEntries, filterMode)
+
+  // Calculate total cost from filtered entries
+  const totalCost = filteredEntries.reduce((sum, entry) => sum + entry.cost, 0)
+
+  return {
+    entries: filteredEntries,
+    totalCost,
+    totalCount: filteredEntries.length,
     lastUpdated: new Date(),
     filterMode,
     appStartedAt: appStartTime

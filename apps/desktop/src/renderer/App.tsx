@@ -2,7 +2,7 @@ import { Header } from './components/Header'
 import { ClaudeUsageCard } from './components/ClaudeUsageCard'
 import { CodexUsageCard } from './components/CodexUsageCard'
 import { CursorUsageCard } from './components/CursorUsageCard'
-import { RecentUsagesTable } from './components/RecentUsagesTable'
+import { UsageDataPanel } from './components/UsageDataPanel'
 import { ErrorPanel } from './components/ErrorPanel'
 import { Footer } from './components/Footer'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -186,7 +186,7 @@ export default function App() {
       </main>
 
       {!isSettingsOpen && (
-        <RecentUsagesTable className="mt-6" />
+        <UsageDataPanel className="mt-6" />
       )}
 
       <ErrorPanel visible={!isSettingsOpen && !!errorMessage} message={errorMessage} />

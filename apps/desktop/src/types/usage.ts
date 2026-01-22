@@ -99,3 +99,13 @@ export interface RecentUsagesData {
   filterMode: UsageFilterMode
   appStartedAt?: Date
 }
+
+// Chart aggregation data
+export interface UsageChartData {
+  entries: RecentUsageEntry[]
+  totalCost: number
+  totalCount: number
+  lastUpdated: Date
+  filterMode: UsageFilterMode
+  appStartedAt?: Date
+}

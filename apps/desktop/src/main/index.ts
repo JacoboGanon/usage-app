@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { getUsageUpdate, startPolling, stopPolling, getPollInterval, setPollInterval, setCursorToken, getCursorToken, initCursorToken, refreshProvider, type ProviderName } from './usage-service'
-import { getRecentUsages, setAppStartTime } from './recent-usage-service'
+import { getRecentUsages, getChartData, setAppStartTime } from './recent-usage-service'
 import type { UsageFilterMode, ProviderFilter } from '../types/usage'
 
 let mainWindow: BrowserWindow | null = null
@@ -69,6 +69,10 @@ ipcMain.handle('get-cursor-token', () => {
 
 ipcMain.handle('get-recent-usages', async (_event, page?: number, pageSize?: number, filterMode?: UsageFilterMode, providers?: ProviderFilter) => {
   return await getRecentUsages(page, pageSize, filterMode, providers)
+})
+
+ipcMain.handle('get-chart-data', async (_event, filterMode?: UsageFilterMode, providers?: ProviderFilter) => {
+  return await getChartData(filterMode, providers)
 })
 
 ipcMain.handle('refresh-provider', async (_event, provider: ProviderName) => {

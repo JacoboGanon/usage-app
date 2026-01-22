@@ -45,12 +45,16 @@ function formatTimestamp(timestamp: Date | string): string {
 
 function formatModel(model: string): string {
   // Shorten common model names
+  // Note: More specific patterns must come before general ones (e.g., opus-4-5 before opus-4)
   if (model.includes('claude-3-5-sonnet')) return 'Sonnet 3.5'
   if (model.includes('claude-3-opus')) return 'Opus 3'
   if (model.includes('claude-3-sonnet')) return 'Sonnet 3'
   if (model.includes('claude-3-haiku')) return 'Haiku 3'
+  if (model.includes('claude-sonnet-4-5')) return 'Sonnet 4.5'
   if (model.includes('claude-sonnet-4')) return 'Sonnet 4'
+  if (model.includes('claude-opus-4-5')) return 'Opus 4.5'
   if (model.includes('claude-opus-4')) return 'Opus 4'
+  if (model.includes('claude-haiku-4')) return 'Haiku 4'
   if (model.includes('gpt-4o')) return 'GPT-4o'
   if (model.includes('gpt-4')) return 'GPT-4'
   if (model.includes('o1')) return 'o1'

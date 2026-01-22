@@ -1,4 +1,4 @@
-import type { UsageUpdate, RecentUsagesData, ProviderName, UsageFilterMode, ProviderFilter } from './usage'
+import type { UsageUpdate, RecentUsagesData, UsageChartData, ProviderName, UsageFilterMode, ProviderFilter } from './usage'
 
 export interface ElectronAPI {
   sendMessage: (channel: string, data: unknown) => void
@@ -16,6 +16,7 @@ export interface ElectronAPI {
     setCursorToken: (token: string | null) => Promise<boolean>
     getCursorToken: () => Promise<string | null>
     getRecentUsages: (page?: number, pageSize?: number, filterMode?: UsageFilterMode, providers?: ProviderFilter) => Promise<RecentUsagesData>
+    getChartData: (filterMode?: UsageFilterMode, providers?: ProviderFilter) => Promise<UsageChartData>
     refreshProvider: (provider: ProviderName) => Promise<UsageUpdate>
   }
 }

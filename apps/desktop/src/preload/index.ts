@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
-import type { UsageUpdate, RecentUsagesData, ProviderName, UsageFilterMode, ProviderFilter } from '../types/usage'
+import type { UsageUpdate, RecentUsagesData, UsageChartData, ProviderName, UsageFilterMode, ProviderFilter } from '../types/usage'
 
 // Expose protected methods to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Get recent usage data from local JSONL files with pagination and filtering
     getRecentUsages: (page?: number, pageSize?: number, filterMode?: UsageFilterMode, providers?: ProviderFilter): Promise<RecentUsagesData> => ipcRenderer.invoke('get-recent-usages', page, pageSize, filterMode, providers),
+
+    // Get all usage data for charts (no pagination)
+    getChartData: (filterMode?: UsageFilterMode, providers?: ProviderFilter): Promise<UsageChartData> => ipcRenderer.invoke('get-chart-data', filterMode, providers),
 
     // Refresh a specific provider's usage data
     refreshProvider: (provider: ProviderName): Promise<UsageUpdate> => ipcRenderer.invoke('refresh-provider', provider)
