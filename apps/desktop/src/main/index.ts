@@ -1,6 +1,5 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
-import { existsSync } from 'fs'
 import { getUsageUpdate, startPolling, stopPolling, getPollInterval, setPollInterval, setCursorToken, getCursorToken, initCursorToken, refreshProvider, type ProviderName } from './usage-service'
 import { getRecentUsages, getChartData, setAppStartTime } from './recent-usage-service'
 import type { UsageFilterMode, ProviderFilter } from '../types/usage'
@@ -82,6 +81,12 @@ ipcMain.handle('refresh-provider', async (_event, provider: ProviderName) => {
     mainWindow.webContents.send('usage-update', update)
   }
   return update
+})
+
+ipcMain.handle('reset-session', () => {
+  const newSessionTime = new Date()
+  setAppStartTime(newSessionTime)
+  return newSessionTime.toISOString()
 })
 
 app.whenReady().then(async () => {

@@ -10,6 +10,7 @@ interface FilterBarProps {
   onFilterModeChange: (mode: UsageFilterMode) => void
   onProviderFilterChange: (providers: ProviderFilter) => void
   onViewModeChange: (mode: ViewMode) => void
+  onResetSession?: () => void
 }
 
 const ALL_PROVIDERS: ProviderName[] = ['claude', 'codex', 'cursor']
@@ -26,7 +27,8 @@ export function FilterBar({
   viewMode,
   onFilterModeChange,
   onProviderFilterChange,
-  onViewModeChange
+  onViewModeChange,
+  onResetSession
 }: FilterBarProps) {
   const [isProviderDropdownOpen, setIsProviderDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -80,27 +82,33 @@ export function FilterBar({
       <div className="absolute -top-px left-6 right-6 h-px bg-gradient-to-r from-transparent via-purple-500/50 to-transparent" />
 
       <div className="flex items-center justify-between gap-4 p-4">
-        {/* Left side: Time Period Toggle */}
+        {/* Left side: View Mode Toggle */}
         <div className="flex items-center h-10 gap-0.5 p-1 bg-slate-900/50 rounded-lg border border-white/5">
           <button
-            onClick={() => onFilterModeChange('session')}
-            className={`h-full px-4 text-xs font-medium rounded-md transition-all duration-200 ${
-              filterMode === 'session'
-                ? 'bg-gradient-to-r from-purple-500/30 to-violet-500/30 text-purple-200 shadow-sm shadow-purple-500/20'
+            onClick={() => onViewModeChange('table')}
+            className={`flex items-center gap-1.5 h-full px-4 text-xs font-medium rounded-md transition-all duration-200 ${
+              viewMode === 'table'
+                ? 'bg-white/10 text-white'
                 : 'text-slate-500 hover:text-slate-300'
             }`}
           >
-            Session
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            </svg>
+            Table
           </button>
           <button
-            onClick={() => onFilterModeChange('monthly')}
-            className={`h-full px-4 text-xs font-medium rounded-md transition-all duration-200 ${
-              filterMode === 'monthly'
-                ? 'bg-gradient-to-r from-purple-500/30 to-violet-500/30 text-purple-200 shadow-sm shadow-purple-500/20'
+            onClick={() => onViewModeChange('charts')}
+            className={`flex items-center gap-1.5 h-full px-4 text-xs font-medium rounded-md transition-all duration-200 ${
+              viewMode === 'charts'
+                ? 'bg-white/10 text-white'
                 : 'text-slate-500 hover:text-slate-300'
             }`}
           >
-            Monthly
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            Charts
           </button>
         </div>
 
@@ -196,34 +204,42 @@ export function FilterBar({
           )}
         </div>
 
-        {/* Right side: View Mode Toggle */}
-        <div className="flex items-center h-10 gap-0.5 p-1 bg-slate-900/50 rounded-lg border border-white/5">
-          <button
-            onClick={() => onViewModeChange('table')}
-            className={`flex items-center gap-1.5 h-full px-4 text-xs font-medium rounded-md transition-all duration-200 ${
-              viewMode === 'table'
-                ? 'bg-white/10 text-white'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-            </svg>
-            Table
-          </button>
-          <button
-            onClick={() => onViewModeChange('charts')}
-            className={`flex items-center gap-1.5 h-full px-4 text-xs font-medium rounded-md transition-all duration-200 ${
-              viewMode === 'charts'
-                ? 'bg-white/10 text-white'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            Charts
-          </button>
+        {/* Right side: Time Period Toggle + Reset */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center h-10 gap-0.5 p-1 bg-slate-900/50 rounded-lg border border-white/5">
+            <button
+              onClick={() => onFilterModeChange('session')}
+              className={`h-full px-4 text-xs font-medium rounded-md transition-all duration-200 ${
+                filterMode === 'session'
+                  ? 'bg-gradient-to-r from-purple-500/30 to-violet-500/30 text-purple-200 shadow-sm shadow-purple-500/20'
+                  : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              Session
+            </button>
+            <button
+              onClick={() => onFilterModeChange('monthly')}
+              className={`h-full px-4 text-xs font-medium rounded-md transition-all duration-200 ${
+                filterMode === 'monthly'
+                  ? 'bg-gradient-to-r from-purple-500/30 to-violet-500/30 text-purple-200 shadow-sm shadow-purple-500/20'
+                  : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              Monthly
+            </button>
+          </div>
+          {filterMode === 'session' && onResetSession && (
+            <button
+              onClick={onResetSession}
+              className="flex items-center gap-1.5 h-10 px-3 text-xs font-medium rounded-lg bg-slate-900/50 border border-white/5 text-slate-400 hover:text-white hover:bg-slate-800/50 hover:border-white/10 transition-all"
+              title="Reset session cost tracking"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Reset
+            </button>
+          )}
         </div>
       </div>
 

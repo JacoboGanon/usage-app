@@ -1,76 +1,119 @@
 ---
+import { Icon } from 'astro-icon/components'
+
 const features = [
   {
-    title: 'Claude Usage',
-    description: 'Track your Anthropic API usage with detailed model breakdowns for Opus, Sonnet, and Haiku.',
-    icon: 'M13 10V3L4 14h7v7l9-11h-7z',
-    color: 'text-accent-1',
-    bgColor: 'bg-accent-1/10'
+    title: 'Claude Monitoring',
+    description: 'Track Anthropic API spending with detailed breakdowns by model—Opus, Sonnet, and Haiku.',
+    icon: 'lucide:sparkles',
+    color: 'text-claude',
+    bgColor: 'bg-claude/10',
+    borderColor: 'border-claude/20',
+    glowColor: 'rgba(168, 85, 247, 0.15)'
   },
   {
-    title: 'ChatGPT / Codex',
-    description: 'Monitor your OpenAI ChatGPT Pro and Codex CLI usage with real-time updates.',
-    icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
-    color: 'text-emerald-400',
-    bgColor: 'bg-emerald-400/10'
+    title: 'ChatGPT & Codex',
+    description: 'Monitor OpenAI usage including ChatGPT Pro and Codex CLI requests in real-time.',
+    icon: 'lucide:terminal',
+    color: 'text-codex',
+    bgColor: 'bg-codex/10',
+    borderColor: 'border-codex/20',
+    glowColor: 'rgba(16, 185, 129, 0.15)'
   },
   {
     title: 'Cursor Tracking',
-    description: 'Keep tabs on your Cursor AI IDE usage with premium request monitoring.',
-    icon: 'M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z',
-    color: 'text-orange-400',
-    bgColor: 'bg-orange-400/10'
+    description: 'Keep tabs on your Cursor AI IDE premium requests and fast request usage.',
+    icon: 'lucide:mouse-pointer-2',
+    color: 'text-cursor',
+    bgColor: 'bg-cursor/10',
+    borderColor: 'border-cursor/20',
+    glowColor: 'rgba(245, 158, 11, 0.15)'
   },
   {
     title: 'Reset Countdown',
-    description: 'Always know when your usage limits reset with live countdown timers.',
-    icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
-    color: 'text-purple-400',
-    bgColor: 'bg-purple-400/10'
+    description: 'Live countdown timers show exactly when your usage limits reset.',
+    icon: 'lucide:timer',
+    color: 'text-accent-primary',
+    bgColor: 'bg-accent-primary/10',
+    borderColor: 'border-accent-primary/20',
+    glowColor: 'rgba(59, 130, 246, 0.15)'
   },
   {
     title: 'Auto-Refresh',
-    description: 'Configurable polling intervals keep your data fresh without manual refreshes.',
-    icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
-    color: 'text-cyan-400',
-    bgColor: 'bg-cyan-400/10'
+    description: 'Configurable polling keeps data fresh. Set your preferred interval.',
+    icon: 'lucide:refresh-cw',
+    color: 'text-accent-glow',
+    bgColor: 'bg-accent-glow/10',
+    borderColor: 'border-accent-glow/20',
+    glowColor: 'rgba(96, 165, 250, 0.15)'
   },
   {
-    title: 'Beautiful UI',
-    description: 'Glassmorphic design with smooth animations and a dark theme that respects your eyes.',
-    icon: 'M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01',
-    color: 'text-pink-400',
-    bgColor: 'bg-pink-400/10'
+    title: 'Native Desktop',
+    description: 'Fast, lightweight Electron app. Lives in your menubar. Always accessible.',
+    icon: 'lucide:monitor',
+    color: 'text-text-primary',
+    bgColor: 'bg-white/5',
+    borderColor: 'border-white/10',
+    glowColor: 'rgba(255, 255, 255, 0.08)'
   }
 ]
 ---
 
-<section id="features" class="py-24 px-6">
-  <div class="max-w-6xl mx-auto">
-    <div class="text-center mb-16">
-      <h2 class="text-4xl font-bold mb-4">
-        <span class="gradient-text">Everything You Need</span>
+<section id="features" class="py-32 px-6 relative">
+  <!-- Subtle section glow -->
+  <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-gradient-radial from-accent-primary/5 to-transparent rounded-full blur-[100px]"></div>
+
+  <div class="max-w-6xl mx-auto relative z-10">
+    <!-- Section header -->
+    <div class="text-center mb-20">
+      <div class="inline-flex items-center gap-2.5 px-4 py-2 bg-surface/50 backdrop-blur-sm border border-white/5 rounded-sm mb-8 font-mono text-xs text-text-muted uppercase tracking-[0.15em]">
+        <Icon name="lucide:layers" class="w-3.5 h-3.5" />
+        Features
+      </div>
+      <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold font-display mb-6 tracking-tight">
+        <span class="gradient-text">Everything you need</span>
       </h2>
-      <p class="text-slate-400 text-lg max-w-2xl mx-auto">
-        One dashboard to rule them all. Monitor your AI coding tool usage without switching between apps.
+      <p class="text-lg text-text-secondary max-w-xl mx-auto leading-relaxed">
+        One dashboard for all your AI coding tools. Stop switching between apps and tabs.
       </p>
     </div>
 
-    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Features grid -->
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-px bg-white/[0.02] rounded-sm overflow-hidden">
       {features.map((feature, index) => (
         <div
-          class="glass-card group"
-          style={`animation: fade-in 0.6s ease-out ${0.1 * index}s both`}
+          class="feature-card p-8 lg:p-10 group"
+          style={`animation: fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) ${0.08 * index}s forwards; opacity: 0;`}
         >
-          <div class={`w-12 h-12 rounded-xl ${feature.bgColor} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-            <svg xmlns="http://www.w3.org/2000/svg" class={`w-6 h-6 ${feature.color}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={feature.icon} />
-            </svg>
+          <!-- Icon with glow effect -->
+          <div class="relative mb-8">
+            <div
+              class={`w-14 h-14 ${feature.bgColor} border ${feature.borderColor} rounded-sm flex items-center justify-center transition-all duration-500 group-hover:scale-110`}
+              style={`box-shadow: 0 0 0 ${feature.glowColor}; transition: box-shadow 0.5s ease;`}
+            >
+              <Icon name={feature.icon} class={`w-6 h-6 ${feature.color} transition-transform duration-500`} />
+            </div>
+            <!-- Subtle glow on hover -->
+            <div
+              class="absolute inset-0 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl"
+              style={`background: ${feature.glowColor};`}
+            ></div>
           </div>
-          <h3 class="text-xl font-semibold mb-2 text-white">{feature.title}</h3>
-          <p class="text-slate-400">{feature.description}</p>
+
+          <h3 class="text-xl font-semibold mb-4 text-text-primary font-display tracking-tight group-hover:text-white transition-colors duration-300">
+            {feature.title}
+          </h3>
+          <p class="text-text-secondary leading-relaxed text-[15px]">
+            {feature.description}
+          </p>
+
+          <!-- Subtle bottom border accent on hover -->
+          <div class="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/0 to-transparent group-hover:via-white/10 transition-all duration-500"></div>
         </div>
       ))}
     </div>
   </div>
 </section>
+
+<!-- Section divider -->
+<div class="section-divider"></div>

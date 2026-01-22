@@ -296,19 +296,35 @@ export function UsageDataPanel({ className = '' }: UsageDataPanelProps) {
     fetchTableData(page, filterMode, providerFilter)
   }, [fetchTableData, filterMode, providerFilter])
 
+  // Handle session reset
+  const handleResetSession = useCallback(async () => {
+    if (!window.electronAPI?.usage?.resetSession) {
+      return
+    }
+
+    await window.electronAPI.usage.resetSession()
+
+    // Refetch data with the new session start time
+    setTableLoading(true)
+    setChartLoading(true)
+    setCurrentPage(1)
+    fetchTableData(1, filterMode, providerFilter)
+    fetchChartData(filterMode, providerFilter)
+  }, [fetchTableData, fetchChartData, filterMode, providerFilter])
+
   // Initial fetch and polling
   useEffect(() => {
     fetchTableData(currentPage, filterMode, providerFilter)
     fetchChartData(filterMode, providerFilter)
 
-    // Refresh every 60 seconds
+    // Refresh every 60 seconds using current state values
     const interval = setInterval(() => {
       fetchTableData(currentPage, filterMode, providerFilter)
       fetchChartData(filterMode, providerFilter)
     }, 60000)
 
     return () => clearInterval(interval)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentPage, filterMode, providerFilter, fetchTableData, fetchChartData])
 
   const totalCost = viewMode === 'charts'
     ? (chartData?.totalCost ?? 0)
@@ -326,6 +342,7 @@ export function UsageDataPanel({ className = '' }: UsageDataPanelProps) {
           onFilterModeChange={handleFilterModeChange}
           onProviderFilterChange={handleProviderFilterChange}
           onViewModeChange={handleViewModeChange}
+          onResetSession={handleResetSession}
         />
         <div className="usage-card">
           <div className="flex items-center justify-center py-12">
@@ -349,6 +366,7 @@ export function UsageDataPanel({ className = '' }: UsageDataPanelProps) {
           onFilterModeChange={handleFilterModeChange}
           onProviderFilterChange={handleProviderFilterChange}
           onViewModeChange={handleViewModeChange}
+          onResetSession={handleResetSession}
         />
         <div className="usage-card">
           <div className="flex items-center justify-center py-12">
@@ -368,6 +386,7 @@ export function UsageDataPanel({ className = '' }: UsageDataPanelProps) {
         onFilterModeChange={handleFilterModeChange}
         onProviderFilterChange={handleProviderFilterChange}
         onViewModeChange={handleViewModeChange}
+        onResetSession={handleResetSession}
       />
 
       {viewMode === 'charts' ? (

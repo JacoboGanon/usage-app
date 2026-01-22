@@ -1,4 +1,6 @@
 ---
+import '../styles/global.css'
+
 interface Props {
   title: string
   description?: string
@@ -20,16 +22,28 @@ const { title, description = 'Monitor your API usage across Claude, Codex, and C
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
 
-    <!-- Fonts -->
+    <!-- Fonts: Space Mono for display, Inter for body, JetBrains Mono for code -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title}</title>
   </head>
-  <body class="min-h-screen bg-bg-deep text-slate-200 overflow-x-hidden">
-    <div class="grid-overlay"></div>
+  <body class="min-h-screen bg-void text-text-primary overflow-x-hidden">
+    <!-- Atmospheric background -->
+    <div class="atmosphere">
+      <div class="glow-orb glow-orb-1"></div>
+      <div class="glow-orb glow-orb-2"></div>
+      <div class="glow-orb glow-orb-3"></div>
+    </div>
+
+    <!-- Background effects -->
+    <div class="grid-bg"></div>
+    <div class="scan-line"></div>
+    <div class="noise-overlay"></div>
+
+    <!-- Content -->
     <div class="relative z-10">
       <slot />
     </div>

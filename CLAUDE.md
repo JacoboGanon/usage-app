@@ -4,161 +4,114 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Monorepo Structure
 
-This is a **Turborepo + Bun workspaces** monorepo containing:
-
-```
-usage-app/
-├── apps/
-│   ├── desktop/          # Electron desktop app (@usage-app/desktop)
-│   └── web/              # Astro landing page (@usage-app/web)
-├── packages/             # Shared packages (future)
-├── package.json          # Root workspace config
-├── turbo.json            # Turborepo task config
-└── tsconfig.json         # Base TypeScript config
-```
+This is a **Turborepo + Bun workspaces** monorepo with two apps:
+- `apps/desktop` - Electron desktop app (@usage-app/desktop)
+- `apps/web` - Astro landing page (@usage-app/web)
 
 ## Build Commands
-
-### Root-level (Turborepo)
 
 ```bash
 bun install              # Install all dependencies
 
-# Development
-bun run dev              # Run all apps in parallel
-bun run dev:desktop      # Run only Electron app
-bun run dev:web          # Run only Astro landing page
+# Development (DO NOT run dev servers - user manages these)
+bun run dev:desktop      # Electron app with HMR
+bun run dev:web          # Astro landing page
 
 # Building
 bun run build            # Build all apps
-bun run build:desktop    # Build only Electron app
-bun run build:web        # Build only landing page
+bun run build:desktop    # Electron app only (outputs to apps/desktop/out)
+bun run build:web        # Astro site only (outputs to apps/web/dist)
 
 # Packaging (Electron)
-bun run package          # Package for current platform
-bun run package:mac      # Package for macOS (dmg + zip)
-bun run package:win      # Package for Windows (NSIS + portable)
-bun run package:linux    # Package for Linux (AppImage, deb, rpm)
+bun run package:mac      # macOS (dmg + zip)
+bun run package:win      # Windows (NSIS + portable)
+bun run package:linux    # Linux (AppImage, deb, rpm)
 
 # Quality
-bun run test             # Run all tests
+bun run test             # All tests
 bun run typecheck        # TypeScript check all packages
 bun run lint             # ESLint all packages
 ```
 
-### Desktop App (apps/desktop)
+## Releasing
 
+Two ways to release a new version of the desktop app:
+
+**Option 1: Push a Git Tag (Recommended)**
 ```bash
-cd apps/desktop
-bun run dev              # Start Electron with HMR
-bun run build            # Production build (outputs to /out)
-bun run preview          # Preview production build
-bun run test             # Unit tests (Vitest)
-bun run test:ui          # Interactive Vitest UI
-bun run test:coverage    # Unit tests with coverage
-bun run test:e2e         # Playwright E2E tests
-bun run lint             # ESLint check
-bun run typecheck        # TypeScript type checking
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-### Landing Page (apps/web)
+**Option 2: Manual Dispatch**
+Go to Actions → Release → Run workflow on GitHub and enter a version number.
 
-```bash
-cd apps/web
-bun run dev              # Astro dev server
-bun run build            # Static build (outputs to /dist)
-bun run preview          # Preview build
-bun run typecheck        # Astro check
-```
+The workflow runs tests, builds for macOS/Windows/Linux in parallel, and creates a **draft release** with all artifacts. Go to Releases on GitHub to review and publish.
+
+For signed builds, add these repo secrets:
+- macOS: `MAC_CERTIFICATE`, `MAC_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
+- Windows: `WIN_CERTIFICATE`, `WIN_CERTIFICATE_PASSWORD`
 
 ## Testing
 
-Run a single test file:
 ```bash
-cd apps/desktop
-bun vitest run tests/unit/main.test.js
-```
-
-Run tests matching a pattern:
-```bash
-cd apps/desktop
-bun vitest run -t "formatTimeRemaining"
+# From apps/desktop directory
+bun vitest run tests/unit/main.test.js           # Single test file
+bun vitest run -t "formatTimeRemaining"          # Tests matching pattern
+bun run test:e2e                                  # Playwright E2E tests
 ```
 
 ## Architecture
 
 ### Desktop App (apps/desktop)
 
-An Electron app that monitors API usage across three providers: Claude (Anthropic), Codex (OpenAI ChatGPT), and Cursor.
+Electron app monitoring API usage for Claude, Codex (OpenAI ChatGPT), and Cursor.
 
-#### Process Structure
+#### Main Process Services
 
-```
-apps/desktop/
-├── src/
-│   ├── main/           # Electron main process
-│   │   ├── index.ts    # Window creation, IPC handlers, polling
-│   │   └── usage-service.ts  # API fetching for all providers
-│   ├── preload/        # Context bridge (IPC security layer)
-│   │   └── index.ts    # Exposes electronAPI to renderer
-│   ├── renderer/       # React frontend
-│   │   ├── App.tsx     # Main component with state management
-│   │   ├── components/ # UI components (cards, settings, etc.)
-│   │   ├── hooks/      # useUsageData, usePollingProgress, useCountdown
-│   │   └── utils/      # Formatters (time, percentages)
-│   └── types/          # TypeScript interfaces per provider
-├── tests/              # Unit and E2E tests
-├── resources/          # App icons and entitlements
-└── electron-builder.config.ts  # Packaging configuration
-```
+- `src/main/index.ts` - Window creation, IPC handlers, polling lifecycle
+- `src/main/usage-service.ts` - Real-time API fetching for all three providers
+- `src/main/recent-usage-service.ts` - Historical usage parsing from local files, chart data aggregation, LiteLLM pricing lookups
 
-#### IPC Communication
+#### IPC API
 
-The preload script exposes `window.electronAPI.usage` with methods:
-- `getUsage()`, `getPollInterval()`, `setPollInterval()`, `setCursorToken()`, `getRecentUsages()`
-- `onUpdate(callback)` - returns unsubscribe function for real-time updates
+The preload script exposes `window.electronAPI.usage`:
+- `getUsage()`, `getPollInterval()`, `setPollInterval()`, `getCursorToken()`, `setCursorToken()`
+- `getRecentUsages(page, pageSize, filterMode, providers)` - Paginated historical data
+- `getChartData(filterMode, providers)` - Aggregated data for Recharts
+- `refreshProvider(provider)` - Force refresh a single provider
+- `onUpdate(callback)` - Real-time updates (returns unsubscribe function)
 
-Main process uses `ipcMain.handle()` for request-response, renderer subscribes via `ipcRenderer.on()`.
+#### Provider Token Locations
 
-#### Provider API Integration
+| Provider | Token Source |
+|----------|--------------|
+| Claude | macOS Keychain (tries multiple service names) → `~/.claude/.credentials.json` |
+| Codex | `~/.codex/auth.json` |
+| Cursor | User-configurable via Settings (stored encrypted with Electron safeStorage) |
 
-- **Claude**: OAuth token from macOS Keychain or `~/.claude/.credentials.json`
-- **Codex**: Token from `~/.codex/auth.json`
-- **Cursor**: User-configurable session token via settings panel
+Claude also checks XDG config path (`~/.config/claude/`) for usage history.
 
-Polling uses `Promise.allSettled()` so provider failures are independent.
+#### Data Flow
+
+1. Polling uses `Promise.allSettled()` so provider failures are independent
+2. Main process broadcasts updates via `mainWindow.webContents.send('usage-update', data)`
+3. Renderer subscribes via `ipcRenderer.on()` with cleanup on unmount
 
 ### Landing Page (apps/web)
 
-An Astro static site with Tailwind CSS matching the desktop app's glassmorphic theme.
-
-```
-apps/web/
-├── src/
-│   ├── layouts/Layout.astro
-│   ├── pages/index.astro
-│   ├── components/
-│   │   ├── Hero.astro
-│   │   ├── Features.astro
-│   │   ├── DownloadButtons.astro
-│   │   ├── Screenshots.astro
-│   │   └── Footer.astro
-│   └── styles/global.css
-└── public/
-```
+Static Astro site with Tailwind v4, matching the desktop app's glassmorphic design.
 
 ## Styling
 
-Both apps use **Tailwind v4** with PostCSS. Custom theme variables are defined in `@theme` blocks:
+Both apps use **Tailwind v4** with custom `@theme` blocks defining glassmorphic variables:
 - Desktop: `apps/desktop/src/renderer/styles.css`
 - Web: `apps/web/src/styles/global.css`
 
-Theme includes glassmorphic card design with backdrop blur, animated borders, and consistent colors (bg-deep, accent-1/2/3, provider colors).
-
 ## Key Patterns
 
-- Each provider has its own TypeScript interface in `apps/desktop/src/types/`
+- Each provider has its own TypeScript interface in `apps/desktop/src/types/usage.ts`
 - Error state included in all usage data types (providers fail independently)
-- Console logs prefixed with `[Module]` for debugging
-- Settings persisted to localStorage (poll interval, cursor token, tracking toggles)
-- Turborepo caches build outputs for faster rebuilds
+- Console logs prefixed with `[Module]` for debugging (e.g., `[CursorToken]`)
+- Settings persisted to localStorage (poll interval, tracking toggles)
+- Cursor token encrypted with Electron's safeStorage API

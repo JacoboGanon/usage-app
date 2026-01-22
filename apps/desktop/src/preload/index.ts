@@ -55,6 +55,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getChartData: (filterMode?: UsageFilterMode, providers?: ProviderFilter): Promise<UsageChartData> => ipcRenderer.invoke('get-chart-data', filterMode, providers),
 
     // Refresh a specific provider's usage data
-    refreshProvider: (provider: ProviderName): Promise<UsageUpdate> => ipcRenderer.invoke('refresh-provider', provider)
+    refreshProvider: (provider: ProviderName): Promise<UsageUpdate> => ipcRenderer.invoke('refresh-provider', provider),
+
+    // Reset session start time (for session cost tracking)
+    resetSession: (): Promise<string> => ipcRenderer.invoke('reset-session')
   }
 })

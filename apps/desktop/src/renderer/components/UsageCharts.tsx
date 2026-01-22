@@ -38,12 +38,6 @@ function formatCost(value: number): string {
   return `$${value.toFixed(2)}`
 }
 
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`
-  return tokens.toString()
-}
-
 interface CustomTooltipProps {
   active?: boolean
   payload?: Array<{
@@ -69,26 +63,6 @@ function CostTooltip({ active, payload, label }: CustomTooltipProps) {
           />
           <span className="text-slate-300">{entry.name}:</span>
           <span className="font-mono text-white">{formatCost(entry.value)}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function TokensTooltip({ active, payload, label }: CustomTooltipProps) {
-  if (!active || !payload?.length) return null
-
-  return (
-    <div className="bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-lg px-3 py-2 shadow-xl">
-      <p className="text-xs text-slate-400 mb-1.5">{label}</p>
-      {payload.map((entry, index) => (
-        <div key={index} className="flex items-center gap-2 text-sm">
-          <span
-            className="w-2 h-2 rounded-full"
-            style={{ backgroundColor: entry.color }}
-          />
-          <span className="text-slate-300">{entry.name}:</span>
-          <span className="font-mono text-white">{formatTokens(entry.value)}</span>
         </div>
       ))}
     </div>

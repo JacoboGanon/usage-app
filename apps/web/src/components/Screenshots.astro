@@ -1,73 +1,177 @@
 ---
+import { Icon } from 'astro-icon/components'
 ---
 
-<section class="py-24 px-6 relative overflow-hidden">
-  <div class="max-w-6xl mx-auto">
+<section class="py-32 px-6 relative overflow-hidden">
+  <!-- Background ambiance -->
+  <div class="absolute inset-0">
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[600px] bg-gradient-radial from-accent-primary/8 via-accent-claude/4 to-transparent rounded-full blur-[120px]"></div>
+  </div>
+
+  <div class="max-w-6xl mx-auto relative z-10">
+    <!-- Section header -->
     <div class="text-center mb-16">
-      <h2 class="text-4xl font-bold mb-4">
-        <span class="gradient-text">See It In Action</span>
+      <div class="inline-flex items-center gap-2.5 px-4 py-2 bg-surface/50 backdrop-blur-sm border border-white/5 rounded-sm mb-8 font-mono text-xs text-text-muted uppercase tracking-[0.15em]">
+        <Icon name="lucide:eye" class="w-3.5 h-3.5" />
+        Preview
+      </div>
+      <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold font-display mb-6 tracking-tight">
+        <span class="gradient-text">See it in action</span>
       </h2>
-      <p class="text-slate-400 text-lg">
+      <p class="text-lg text-text-secondary max-w-xl mx-auto leading-relaxed">
         A clean, focused interface that shows exactly what you need.
       </p>
     </div>
 
-    <!-- Screenshot placeholder -->
-    <div class="relative">
-      <!-- Glow effect -->
-      <div class="absolute -inset-4 bg-gradient-to-r from-accent-1/20 via-accent-2/20 to-accent-3/20 rounded-3xl blur-2xl opacity-50"></div>
+    <!-- App mockup with dramatic presentation -->
+    <div class="relative max-w-4xl mx-auto">
+      <!-- Outer glow layers -->
+      <div class="absolute -inset-4 bg-gradient-to-r from-claude/20 via-accent-primary/20 to-codex/20 rounded-lg blur-2xl opacity-40"></div>
+      <div class="absolute -inset-1 bg-gradient-to-b from-white/5 to-transparent rounded-lg"></div>
 
-      <!-- Screenshot container -->
-      <div class="relative glass-card p-2 animate-float">
-        <div class="bg-bg-primary rounded-2xl overflow-hidden border border-white/5">
-          <!-- Window header -->
-          <div class="flex items-center gap-2 px-4 py-3 bg-black/20 border-b border-white/5">
-            <div class="flex gap-2">
-              <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
-              <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
-              <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+      <!-- App window -->
+      <div class="app-mockup rounded-lg overflow-hidden relative" style="animation: float 8s ease-in-out infinite;">
+        <!-- Window header -->
+        <div class="flex items-center justify-between px-5 py-4 bg-void/90 backdrop-blur-sm border-b border-white/5">
+          <div class="window-controls">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <span class="font-mono text-xs text-text-muted tracking-wider">Usage Console v1.0.0</span>
+          <div class="w-[52px]"></div>
+        </div>
+
+        <!-- App content -->
+        <div class="p-6 lg:p-8 bg-surface/95 backdrop-blur-sm min-h-[520px]">
+          <!-- Header bar -->
+          <div class="flex items-center justify-between mb-8">
+            <div class="flex items-center gap-4">
+              <div class="w-10 h-10 bg-gradient-to-br from-accent-primary via-accent-claude to-accent-primary rounded-lg flex items-center justify-center shadow-lg shadow-accent-primary/20">
+                <Icon name="lucide:activity" class="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <span class="font-display font-semibold text-text-primary text-lg">Dashboard</span>
+              </div>
             </div>
-            <span class="text-sm text-slate-500 ml-4 font-mono">Usage Console</span>
+            <div class="flex items-center gap-2.5 px-3 py-1.5 bg-codex/10 border border-codex/20 rounded-sm">
+              <span class="live-indicator"></span>
+              <span class="text-xs font-mono text-codex">Live</span>
+            </div>
           </div>
 
-          <!-- App preview mockup -->
-          <div class="p-8 min-h-[400px] flex flex-col gap-6">
-            <!-- Stats row mockup -->
-            <div class="grid grid-cols-3 gap-4">
-              <div class="bg-white/5 rounded-xl p-4 border border-white/5">
-                <div class="text-sm text-slate-400 mb-1">Claude Usage</div>
-                <div class="text-2xl font-bold gradient-text">$47.23</div>
-                <div class="text-xs text-slate-500 mt-1">of $100 limit</div>
+          <!-- Stats grid -->
+          <div class="grid grid-cols-3 gap-4 lg:gap-5 mb-6">
+            <!-- Claude stat -->
+            <div class="bg-elevated/80 backdrop-blur-sm rounded-lg p-5 border border-claude/15 stat-glow-claude transition-all duration-300 hover:border-claude/30">
+              <div class="flex items-center justify-between mb-4">
+                <div class="w-9 h-9 bg-claude/10 rounded-lg flex items-center justify-center">
+                  <Icon name="lucide:sparkles" class="w-4 h-4 text-claude" />
+                </div>
+                <span class="text-[10px] font-mono text-text-muted uppercase tracking-wider">Anthropic</span>
               </div>
-              <div class="bg-white/5 rounded-xl p-4 border border-emerald-500/20">
-                <div class="text-sm text-slate-400 mb-1">ChatGPT / Codex</div>
-                <div class="text-2xl font-bold text-emerald-400">245</div>
-                <div class="text-xs text-slate-500 mt-1">requests today</div>
+              <div class="text-3xl lg:text-4xl font-bold font-mono text-claude mb-1 tracking-tight">$47.23</div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-text-muted">of $100 limit</span>
+                <span class="text-xs font-mono text-claude font-medium">47%</span>
               </div>
-              <div class="bg-white/5 rounded-xl p-4 border border-orange-500/20">
-                <div class="text-sm text-slate-400 mb-1">Cursor</div>
-                <div class="text-2xl font-bold text-orange-400">89%</div>
-                <div class="text-xs text-slate-500 mt-1">premium used</div>
-              </div>
-            </div>
-
-            <!-- Countdown mockup -->
-            <div class="bg-white/5 rounded-xl p-4 border border-white/5">
-              <div class="flex items-center justify-between">
-                <div class="text-sm text-slate-400">Reset in</div>
-                <div class="font-mono text-accent-1 text-lg">6d 14h 23m 45s</div>
-              </div>
-              <div class="mt-2 h-2 bg-white/5 rounded-full overflow-hidden">
-                <div class="h-full w-3/4 bg-gradient-to-r from-accent-1 to-accent-2 rounded-full"></div>
+              <div class="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div class="h-full w-[47%] bg-gradient-to-r from-claude/70 to-claude rounded-full transition-all duration-1000"></div>
               </div>
             </div>
 
-            <p class="text-center text-slate-500 text-sm">
-              Screenshot placeholder - actual app screenshot goes here
-            </p>
+            <!-- Codex stat -->
+            <div class="bg-elevated/80 backdrop-blur-sm rounded-lg p-5 border border-codex/15 stat-glow-codex transition-all duration-300 hover:border-codex/30">
+              <div class="flex items-center justify-between mb-4">
+                <div class="w-9 h-9 bg-codex/10 rounded-lg flex items-center justify-center">
+                  <Icon name="lucide:terminal" class="w-4 h-4 text-codex" />
+                </div>
+                <span class="text-[10px] font-mono text-text-muted uppercase tracking-wider">OpenAI</span>
+              </div>
+              <div class="text-3xl lg:text-4xl font-bold font-mono text-codex mb-1 tracking-tight">245</div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-text-muted">requests today</span>
+                <span class="text-xs font-mono text-codex font-medium">+12</span>
+              </div>
+              <div class="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div class="h-full w-[65%] bg-gradient-to-r from-codex/70 to-codex rounded-full transition-all duration-1000"></div>
+              </div>
+            </div>
+
+            <!-- Cursor stat -->
+            <div class="bg-elevated/80 backdrop-blur-sm rounded-lg p-5 border border-cursor/15 stat-glow-cursor transition-all duration-300 hover:border-cursor/30">
+              <div class="flex items-center justify-between mb-4">
+                <div class="w-9 h-9 bg-cursor/10 rounded-lg flex items-center justify-center">
+                  <Icon name="lucide:mouse-pointer-2" class="w-4 h-4 text-cursor" />
+                </div>
+                <span class="text-[10px] font-mono text-text-muted uppercase tracking-wider">Cursor</span>
+              </div>
+              <div class="text-3xl lg:text-4xl font-bold font-mono text-cursor mb-1 tracking-tight">89%</div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-xs text-text-muted">premium used</span>
+                <span class="text-xs font-mono text-cursor font-medium">446/500</span>
+              </div>
+              <div class="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div class="h-full w-[89%] bg-gradient-to-r from-cursor/70 to-cursor rounded-full transition-all duration-1000"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reset countdown -->
+          <div class="bg-elevated/80 backdrop-blur-sm rounded-lg p-5 border border-white/5 mb-6 hover:border-white/10 transition-colors">
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-accent-primary/10 rounded-lg flex items-center justify-center">
+                  <Icon name="lucide:timer" class="w-4 h-4 text-accent-primary" />
+                </div>
+                <span class="text-sm text-text-secondary font-medium">Reset countdown</span>
+              </div>
+              <span class="font-mono text-accent-primary text-lg font-semibold tracking-tight">6d 14h 23m 45s</span>
+            </div>
+            <div class="h-2 bg-white/5 rounded-full overflow-hidden">
+              <div class="h-full w-3/4 bg-gradient-to-r from-accent-primary/80 via-accent-glow to-accent-primary rounded-full relative">
+                <div class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-accent-primary rounded-full shadow-lg shadow-accent-primary/50"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent activity -->
+          <div class="bg-elevated/80 backdrop-blur-sm rounded-lg p-5 border border-white/5 hover:border-white/10 transition-colors">
+            <div class="flex items-center gap-3 mb-5">
+              <div class="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center">
+                <Icon name="lucide:activity" class="w-4 h-4 text-text-muted" />
+              </div>
+              <span class="text-sm text-text-secondary font-medium">Recent activity</span>
+            </div>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                <div class="flex items-center gap-3">
+                  <span class="w-2.5 h-2.5 bg-claude rounded-full shadow-sm shadow-claude/50"></span>
+                  <span class="text-text-secondary text-sm">Claude API call</span>
+                </div>
+                <span class="font-mono text-xs text-text-muted">2m ago</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                <div class="flex items-center gap-3">
+                  <span class="w-2.5 h-2.5 bg-cursor rounded-full shadow-sm shadow-cursor/50"></span>
+                  <span class="text-text-secondary text-sm">Cursor completion</span>
+                </div>
+                <span class="font-mono text-xs text-text-muted">5m ago</span>
+              </div>
+              <div class="flex items-center justify-between py-2">
+                <div class="flex items-center gap-3">
+                  <span class="w-2.5 h-2.5 bg-codex rounded-full shadow-sm shadow-codex/50"></span>
+                  <span class="text-text-secondary text-sm">Codex request</span>
+                </div>
+                <span class="font-mono text-xs text-text-muted">12m ago</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </div>
 </section>
+
+<!-- Section divider -->
+<div class="section-divider"></div>
