@@ -6,8 +6,40 @@ import { getCursorToken } from './usage-service'
 
 const LITELLM_PRICING_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json'
 const CURSOR_USAGE_API_URL = 'https://cursor.com/api/dashboard/get-filtered-usage-events'
-const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 const CODEX_DIR = join(homedir(), '.codex')
+
+/**
+ * Gets all valid Claude data directories
+ * Checks both XDG config path (~/.config/claude) and legacy path (~/.claude)
+ */
+function getClaudeProjectsDirs(): string[] {
+  const dirs: string[] = []
+
+  // Check environment variable first (supports comma-separated paths)
+  const envPaths = (process.env.CLAUDE_CONFIG_DIR ?? '').trim()
+  if (envPaths !== '') {
+    const envPathList = envPaths
+      .split(',')
+      .map(p => p.trim())
+      .filter(p => p !== '')
+    for (const envPath of envPathList) {
+      dirs.push(join(envPath, 'projects'))
+    }
+    // If environment variable is set, only use those paths
+    if (dirs.length > 0) {
+      return dirs
+    }
+  }
+
+  // XDG config path (new default): ~/.config/claude/projects
+  const xdgConfigHome = process.env.XDG_CONFIG_HOME || join(homedir(), '.config')
+  dirs.push(join(xdgConfigHome, 'claude', 'projects'))
+
+  // Legacy path: ~/.claude/projects
+  dirs.push(join(homedir(), '.claude', 'projects'))
+
+  return dirs
+}
 
 // Cache for LiteLLM pricing data
 let pricingCache: LiteLLMPricingData | null = null
@@ -34,6 +66,7 @@ export function getAppStartTime(): Date {
 interface ClaudeJSONLEntry {
   type?: string
   message?: {
+    id?: string  // Message ID for deduplication
     role?: string
     model?: string
     stop_reason?: string | null
@@ -46,18 +79,26 @@ interface ClaudeJSONLEntry {
   }
   timestamp?: string
   costUSD?: number
+  requestId?: string  // Request ID for deduplication
+  sessionId?: string
 }
 
 interface CodexJSONLEntry {
   type?: string
-  model?: string
-  usage?: {
-    prompt_tokens?: number
-    completion_tokens?: number
-    total_tokens?: number
-  }
   timestamp?: string
-  created?: number
+  payload?: {
+    type?: string
+    model?: string
+    info?: {
+      last_token_usage?: {
+        input_tokens?: number
+        cached_input_tokens?: number
+        output_tokens?: number
+        reasoning_output_tokens?: number
+        total_tokens?: number
+      }
+    }
+  }
 }
 
 interface CursorUsageEvent {
@@ -65,13 +106,14 @@ interface CursorUsageEvent {
   model?: string
   kind?: string
   maxMode?: boolean
+  requestsCosts?: number
   usageBasedCosts?: string
   isTokenBasedCall?: boolean
   tokenUsage?: {
-    inputTokens?: number
     outputTokens?: number
-    cacheHits?: number
-    cacheMisses?: number
+    cacheWriteTokens?: number
+    cacheReadTokens?: number
+    totalCents?: number
   }
   owningUser?: string
   cursorTokenFee?: number
@@ -171,9 +213,73 @@ function calculateCost(
 }
 
 /**
+ * Gets pricing for a Codex/OpenAI model with proper provider prefixes
+ */
+function getCodexModelPricing(pricing: LiteLLMPricingData, model: string): ModelPricing | null {
+  // Try OpenAI provider prefixes first (as used by ccusage)
+  const prefixes = ['openai/', 'azure/', 'openrouter/openai/']
+
+  for (const prefix of prefixes) {
+    const key = `${prefix}${model}`
+    if (pricing[key]) {
+      return pricing[key]
+    }
+  }
+
+  // Try exact match
+  if (pricing[model]) {
+    return pricing[model]
+  }
+
+  // Model alias: gpt-5-codex -> gpt-5
+  const aliasMap: Record<string, string> = {
+    'gpt-5-codex': 'gpt-5'
+  }
+
+  const aliasedModel = aliasMap[model] || model
+  if (aliasedModel !== model) {
+    for (const prefix of prefixes) {
+      const key = `${prefix}${aliasedModel}`
+      if (pricing[key]) {
+        return pricing[key]
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Calculates cost for Codex usage with proper non-cached input handling
+ * Per ccusage: non-cached input = input_tokens - cached_input_tokens
+ */
+function calculateCodexCost(
+  pricing: LiteLLMPricingData,
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  cachedInputTokens: number
+): number {
+  const modelPricing = getCodexModelPricing(pricing, model)
+
+  if (!modelPricing) {
+    return 0
+  }
+
+  // Non-cached input tokens (ensure non-negative)
+  const nonCachedInput = Math.max(0, inputTokens - cachedInputTokens)
+
+  const inputCost = nonCachedInput * (modelPricing.input_cost_per_token || 0)
+  const cachedCost = cachedInputTokens * (modelPricing.cache_read_input_token_cost || modelPricing.input_cost_per_token || 0)
+  const outputCost = outputTokens * (modelPricing.output_cost_per_token || 0)
+
+  return inputCost + cachedCost + outputCost
+}
+
+/**
  * Recursively finds all JSONL files in a directory
  */
-async function findJSONLFiles(dir: string, maxDepth = 3, currentDepth = 0): Promise<string[]> {
+async function findJSONLFiles(dir: string, maxDepth = 5, currentDepth = 0): Promise<string[]> {
   if (currentDepth >= maxDepth) return []
 
   const files: string[] = []
@@ -199,11 +305,28 @@ async function findJSONLFiles(dir: string, maxDepth = 3, currentDepth = 0): Prom
 }
 
 /**
+ * Creates a unique hash for deduplication using message ID and request ID
+ * Following the ccusage approach
+ */
+function createUniqueHash(entry: ClaudeJSONLEntry): string | null {
+  const messageId = entry.message?.id
+  const requestId = entry.requestId
+
+  if (!messageId || !requestId) {
+    return null
+  }
+
+  return `${messageId}:${requestId}`
+}
+
+/**
  * Parses a JSONL file and extracts usage entries
  */
 async function parseClaudeJSONLFile(
   filePath: string,
-  pricing: LiteLLMPricingData
+  pricing: LiteLLMPricingData,
+  processedHashes: Set<string>,  // Shared across files for deduplication
+  enableDebug = false  // Set to true for first file only
 ): Promise<RecentUsageEntry[]> {
   const entries: RecentUsageEntry[] = []
 
@@ -215,16 +338,43 @@ async function parseClaudeJSONLFile(
     const projectName = basename(dirname(filePath))
     const sessionId = basename(filePath, '.jsonl')
 
+    if (enableDebug) {
+      console.log(`[ClaudeUsage] Parsing file: ${filePath}`)
+      console.log(`[ClaudeUsage] Total lines in file: ${lines.length}`)
+    }
+
+    let debugStats = { total: 0, noUsage: 0, duplicate: 0, valid: 0 }
+
     for (const line of lines) {
       try {
         const entry: ClaudeJSONLEntry = JSON.parse(line)
+        debugStats.total++
 
-        // Process entries with usage data
-        // Accept: entries with type='assistant' and message.usage, OR entries with message.usage but no type (usage summary entries)
+        // Process entries with usage data following ccusage/data-loader.ts approach:
+        // Simply check for valid usage data - no filtering based on type/stop_reason
+        // The deduplication using message.id + requestId handles any duplicates
         const usage = entry.message?.usage
-        const hasUsageData = usage && (usage.input_tokens != null || usage.output_tokens != null)
-        const isValidEntry = hasUsageData && (entry.type === 'assistant' || entry.type === undefined)
-        if (isValidEntry && usage) {
+        const hasInputTokens = usage?.input_tokens != null && usage.input_tokens > 0
+        const hasOutputTokens = usage?.output_tokens != null && usage.output_tokens > 0
+        const hasUsageData = hasInputTokens || hasOutputTokens
+
+        if (!hasUsageData) {
+          debugStats.noUsage++
+          continue
+        }
+
+        if (hasUsageData && usage) {
+          // Deduplication check using message ID + request ID (ccusage approach)
+          const uniqueHash = createUniqueHash(entry)
+          if (uniqueHash) {
+            if (processedHashes.has(uniqueHash)) {
+              debugStats.duplicate++
+              continue
+            }
+            processedHashes.add(uniqueHash)
+          }
+
+          debugStats.valid++
           const model = entry.message?.model || 'unknown'
 
           const inputTokens = usage.input_tokens || 0
@@ -259,13 +409,34 @@ async function parseClaudeJSONLFile(
             sessionId,
             projectName
           })
+
+          // Log first valid entry for debugging
+          if (enableDebug && entries.length === 1) {
+            console.log(`[ClaudeUsage] Sample entry:`, {
+              timestamp: timestamp.toISOString(),
+              model,
+              inputTokens,
+              outputTokens,
+              cost,
+              hasMessageId: !!entry.message?.id,
+              hasRequestId: !!entry.requestId,
+              hasCostUSD: entry.costUSD !== undefined
+            })
+          }
         }
-      } catch {
+      } catch (parseErr) {
         // Skip malformed lines
+        if (enableDebug) {
+          console.log(`[ClaudeUsage] Failed to parse line:`, parseErr)
+        }
       }
     }
-  } catch {
-    // File doesn't exist or can't be read
+
+    if (enableDebug) {
+      console.log(`[ClaudeUsage] Parse stats:`, debugStats)
+    }
+  } catch (err) {
+    console.error(`[ClaudeUsage] Error reading file ${filePath}:`, err)
   }
 
   return entries
@@ -273,6 +444,8 @@ async function parseClaudeJSONLFile(
 
 /**
  * Parses Codex JSONL files
+ * Each event_msg with payload.type === 'token_count' contains a delta in last_token_usage.
+ * Per ccusage: all events should be accumulated (no deduplication).
  */
 async function parseCodexJSONLFile(
   filePath: string,
@@ -286,40 +459,46 @@ async function parseCodexJSONLFile(
 
     const sessionId = basename(filePath, '.jsonl')
 
+    // Track current model from turn_context entries
+    let currentModel = 'gpt-4'
+
     for (const line of lines) {
       try {
         const entry: CodexJSONLEntry = JSON.parse(line)
 
-        if (entry.usage) {
-          const model = entry.model || 'gpt-4'
-          const inputTokens = entry.usage.prompt_tokens || 0
-          const outputTokens = entry.usage.completion_tokens || 0
-          const totalTokens = entry.usage.total_tokens || inputTokens + outputTokens
+        // Update model from turn_context entries
+        if (entry.type === 'turn_context' && entry.payload?.model) {
+          currentModel = entry.payload.model
+        }
 
-          const cost = calculateCost(pricing, model, inputTokens, outputTokens, 0, 0)
+        // Parse token usage from event_msg entries with token_count type
+        // last_token_usage contains the delta (per-turn usage), accumulate all events
+        if (entry.type === 'event_msg' && entry.payload?.type === 'token_count') {
+          const tokenUsage = entry.payload.info?.last_token_usage
+          if (tokenUsage && tokenUsage.total_tokens && tokenUsage.total_tokens > 0) {
+            const inputTokens = tokenUsage.input_tokens || 0
+            const outputTokens = tokenUsage.output_tokens || 0
+            const cachedInputTokens = tokenUsage.cached_input_tokens || 0
+            const totalTokens = tokenUsage.total_tokens || inputTokens + outputTokens
 
-          let timestamp: Date
-          if (entry.timestamp) {
-            timestamp = new Date(entry.timestamp)
-          } else if (entry.created) {
-            timestamp = new Date(entry.created * 1000)
-          } else {
-            timestamp = new Date()
+            const cost = calculateCodexCost(pricing, currentModel, inputTokens, outputTokens, cachedInputTokens)
+
+            const timestamp = entry.timestamp ? new Date(entry.timestamp) : new Date()
+
+            entries.push({
+              id: `codex-${sessionId}-${entries.length}`,
+              timestamp,
+              provider: 'codex',
+              model: currentModel,
+              inputTokens,
+              outputTokens,
+              cacheCreationTokens: 0,
+              cacheReadTokens: cachedInputTokens,
+              totalTokens,
+              cost,
+              sessionId
+            })
           }
-
-          entries.push({
-            id: `codex-${sessionId}-${entries.length}`,
-            timestamp,
-            provider: 'codex',
-            model,
-            inputTokens,
-            outputTokens,
-            cacheCreationTokens: 0,
-            cacheReadTokens: 0,
-            totalTokens,
-            cost,
-            sessionId
-          })
         }
       } catch {
         // Skip malformed lines
@@ -352,13 +531,11 @@ async function fetchCursorUsagePage(
     })
 
     if (!response.ok) {
-      console.error(`Failed to fetch Cursor usage events page ${page}:`, response.status)
       return null
     }
 
     return await response.json() as CursorUsageResponse
-  } catch (error) {
-    console.error(`Error fetching Cursor usage page ${page}:`, error)
+  } catch {
     return null
   }
 }
@@ -368,7 +545,7 @@ async function fetchCursorUsagePage(
  */
 function parseCursorEvents(
   events: CursorUsageEvent[],
-  pricing: LiteLLMPricingData,
+  _pricing: LiteLLMPricingData,
   startIndex: number
 ): RecentUsageEntry[] {
   const entries: RecentUsageEntry[] = []
@@ -376,13 +553,16 @@ function parseCursorEvents(
   for (const event of events) {
     const model = event.model || 'unknown'
     const tokenUsage = event.tokenUsage || {}
-    const inputTokens = tokenUsage.inputTokens || 0
-    const outputTokens = tokenUsage.outputTokens || 0
-    const cacheReadTokens = tokenUsage.cacheHits || 0
-    const cacheCreationTokens = tokenUsage.cacheMisses || 0
-    const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens
 
-    const cost = calculateCost(pricing, model, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens)
+    // Cursor API provides: outputTokens, cacheWriteTokens, cacheReadTokens, totalCents
+    // Note: inputTokens is not provided directly by the API
+    const outputTokens = tokenUsage.outputTokens || 0
+    const cacheCreationTokens = tokenUsage.cacheWriteTokens || 0
+    const cacheReadTokens = tokenUsage.cacheReadTokens || 0
+    const totalTokens = outputTokens + cacheCreationTokens + cacheReadTokens
+
+    // Use totalCents from the API response (convert from cents to dollars)
+    const cost = tokenUsage.totalCents ? tokenUsage.totalCents / 100 : 0
 
     // Timestamp is a Unix timestamp in milliseconds as a string
     const timestamp = event.timestamp ? new Date(parseInt(event.timestamp, 10)) : new Date()
@@ -392,7 +572,7 @@ function parseCursorEvents(
       timestamp,
       provider: 'cursor',
       model,
-      inputTokens,
+      inputTokens: 0, // Not provided by Cursor API
       outputTokens,
       cacheCreationTokens,
       cacheReadTokens,
@@ -410,10 +590,10 @@ function parseCursorEvents(
 async function fetchCursorUsageEvents(
   sessionToken: string,
   pricing: LiteLLMPricingData,
-  pageSize = 500
+  pageSize = 1000
 ): Promise<RecentUsageEntry[]> {
-  // First request to get total count and first batch
-  const firstPage = await fetchCursorUsagePage(sessionToken, 0, pageSize)
+  // First request to get total count and first batch (pages are 1-indexed)
+  const firstPage = await fetchCursorUsagePage(sessionToken, 1, pageSize)
 
   if (!firstPage || !firstPage.usageEventsDisplay) {
     return []
@@ -422,16 +602,12 @@ async function fetchCursorUsageEvents(
   const totalCount = firstPage.totalUsageEventsCount
   const allEvents: CursorUsageEvent[] = [...firstPage.usageEventsDisplay]
 
-  console.log(`[Cursor] Total usage events: ${totalCount}, fetched first ${allEvents.length}`)
-
   // Calculate remaining pages needed
   const totalPages = Math.ceil(totalCount / pageSize)
 
   if (totalPages > 1) {
-    // Fetch remaining pages in parallel
-    const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 1)
-
-    console.log(`[Cursor] Fetching ${remainingPages.length} additional pages in parallel...`)
+    // Fetch remaining pages in parallel (starting from page 2)
+    const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
 
     const pageResults = await Promise.allSettled(
       remainingPages.map(page => fetchCursorUsagePage(sessionToken, page, pageSize))
@@ -442,8 +618,6 @@ async function fetchCursorUsageEvents(
         allEvents.push(...result.value.usageEventsDisplay)
       }
     }
-
-    console.log(`[Cursor] Total events fetched: ${allEvents.length}`)
   }
 
   return parseCursorEvents(allEvents, pricing, 0)
@@ -504,18 +678,44 @@ export async function getRecentUsages(
   // Normalize providers - if empty array, show all
   const activeProviders = providers.length === 0 ? ALL_PROVIDERS : providers
 
-  // Get Claude usage from JSONL files
+  // Get Claude usage from JSONL files (check all possible directories)
   if (activeProviders.includes('claude')) {
     try {
-      const claudeFiles = await findJSONLFiles(CLAUDE_PROJECTS_DIR)
-      const recentClaudeFiles = await getMostRecentFiles(claudeFiles, 50)
+      const claudeDirs = getClaudeProjectsDirs()
+      console.log('[ClaudeUsage] Checking directories:', claudeDirs)
+      const allClaudeFiles: string[] = []
 
-      for (const file of recentClaudeFiles) {
-        const entries = await parseClaudeJSONLFile(file, pricing)
-        allEntries.push(...entries)
+      // Collect files from all Claude directories
+      for (const dir of claudeDirs) {
+        try {
+          const files = await findJSONLFiles(dir)
+          console.log(`[ClaudeUsage] Found ${files.length} files in ${dir}`)
+          allClaudeFiles.push(...files)
+        } catch (err) {
+          console.log(`[ClaudeUsage] Directory not accessible: ${dir}`, err)
+        }
       }
+
+      console.log(`[ClaudeUsage] Total files found: ${allClaudeFiles.length}`)
+      // Sort files by modification time (most recent first) for better deduplication
+      const sortedClaudeFiles = await getMostRecentFiles(allClaudeFiles, allClaudeFiles.length)
+      console.log(`[ClaudeUsage] Processing all ${sortedClaudeFiles.length} files`)
+
+      // Shared set for deduplication across all files (ccusage approach)
+      const processedHashes = new Set<string>()
+
+      let isFirstFile = true
+      for (const file of sortedClaudeFiles) {
+        const entries = await parseClaudeJSONLFile(file, pricing, processedHashes, isFirstFile)
+        if (entries.length > 0) {
+          console.log(`[ClaudeUsage] File ${basename(file)}: ${entries.length} entries`)
+        }
+        allEntries.push(...entries)
+        isFirstFile = false
+      }
+      console.log(`[ClaudeUsage] Total Claude entries: ${allEntries.length}`)
     } catch (error) {
-      console.error('Error reading Claude usage files:', error)
+      console.error('[ClaudeUsage] Error reading Claude usage files:', error)
     }
   }
 
@@ -523,9 +723,8 @@ export async function getRecentUsages(
   if (activeProviders.includes('codex')) {
     try {
       const codexFiles = await findJSONLFiles(CODEX_DIR)
-      const recentCodexFiles = await getMostRecentFiles(codexFiles, 50)
 
-      for (const file of recentCodexFiles) {
+      for (const file of codexFiles) {
         const entries = await parseCodexJSONLFile(file, pricing)
         allEntries.push(...entries)
       }
@@ -542,8 +741,8 @@ export async function getRecentUsages(
         const cursorEntries = await fetchCursorUsageEvents(cursorToken, pricing)
         allEntries.push(...cursorEntries)
       }
-    } catch (error) {
-      console.error('Error fetching Cursor usage:', error)
+    } catch {
+      // Failed to fetch Cursor usage
     }
   }
 

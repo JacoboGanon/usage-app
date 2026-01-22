@@ -551,7 +551,6 @@ async function getCursorUsageUpdate(): Promise<CursorUsageData> {
     const usage = await fetchCursorUsage(cursorSessionToken)
     return parseCursorUsageResponse(usage)
   } catch (error) {
-    console.error('Failed to fetch Cursor usage:', (error as Error).message)
     return createCursorErrorUpdate((error as Error).message, true)
   }
 }
