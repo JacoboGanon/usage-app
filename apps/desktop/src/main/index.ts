@@ -13,10 +13,6 @@ const appStartedAt = new Date()
 function createWindow() {
   const preloadPath = join(__dirname, '../preload/index.mjs')
 
-  console.log('[Main] Creating window...')
-  console.log('[Main] Preload path:', preloadPath)
-  console.log('[Main] Preload exists:', existsSync(preloadPath))
-
   mainWindow = new BrowserWindow({
     width: 900,
     height: 670,

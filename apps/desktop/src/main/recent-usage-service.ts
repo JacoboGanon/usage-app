@@ -325,8 +325,7 @@ function createUniqueHash(entry: ClaudeJSONLEntry): string | null {
 async function parseClaudeJSONLFile(
   filePath: string,
   pricing: LiteLLMPricingData,
-  processedHashes: Set<string>,  // Shared across files for deduplication
-  enableDebug = false  // Set to true for first file only
+  processedHashes: Set<string>  // Shared across files for deduplication
 ): Promise<RecentUsageEntry[]> {
   const entries: RecentUsageEntry[] = []
 
@@ -338,17 +337,9 @@ async function parseClaudeJSONLFile(
     const projectName = basename(dirname(filePath))
     const sessionId = basename(filePath, '.jsonl')
 
-    if (enableDebug) {
-      console.log(`[ClaudeUsage] Parsing file: ${filePath}`)
-      console.log(`[ClaudeUsage] Total lines in file: ${lines.length}`)
-    }
-
-    const debugStats = { total: 0, noUsage: 0, duplicate: 0, valid: 0 }
-
     for (const line of lines) {
       try {
         const entry: ClaudeJSONLEntry = JSON.parse(line)
-        debugStats.total++
 
         // Process entries with usage data following ccusage/data-loader.ts approach:
         // Simply check for valid usage data - no filtering based on type/stop_reason
@@ -359,7 +350,6 @@ async function parseClaudeJSONLFile(
         const hasUsageData = hasInputTokens || hasOutputTokens
 
         if (!hasUsageData) {
-          debugStats.noUsage++
           continue
         }
 
@@ -368,13 +358,11 @@ async function parseClaudeJSONLFile(
           const uniqueHash = createUniqueHash(entry)
           if (uniqueHash) {
             if (processedHashes.has(uniqueHash)) {
-              debugStats.duplicate++
               continue
             }
             processedHashes.add(uniqueHash)
           }
 
-          debugStats.valid++
           const model = entry.message?.model || 'unknown'
 
           const inputTokens = usage.input_tokens || 0
@@ -410,31 +398,12 @@ async function parseClaudeJSONLFile(
             projectName
           })
 
-          // Log first valid entry for debugging
-          if (enableDebug && entries.length === 1) {
-            console.log(`[ClaudeUsage] Sample entry:`, {
-              timestamp: timestamp.toISOString(),
-              model,
-              inputTokens,
-              outputTokens,
-              cost,
-              hasMessageId: !!entry.message?.id,
-              hasRequestId: !!entry.requestId,
-              hasCostUSD: entry.costUSD !== undefined
-            })
-          }
         }
-      } catch (parseErr) {
+      } catch {
         // Skip malformed lines
-        if (enableDebug) {
-          console.log(`[ClaudeUsage] Failed to parse line:`, parseErr)
-        }
       }
     }
 
-    if (enableDebug) {
-      console.log(`[ClaudeUsage] Parse stats:`, debugStats)
-    }
   } catch (err) {
     console.error(`[ClaudeUsage] Error reading file ${filePath}:`, err)
   }
@@ -682,38 +651,28 @@ export async function getRecentUsages(
   if (activeProviders.includes('claude')) {
     try {
       const claudeDirs = getClaudeProjectsDirs()
-      console.log('[ClaudeUsage] Checking directories:', claudeDirs)
       const allClaudeFiles: string[] = []
 
       // Collect files from all Claude directories
       for (const dir of claudeDirs) {
         try {
           const files = await findJSONLFiles(dir)
-          console.log(`[ClaudeUsage] Found ${files.length} files in ${dir}`)
           allClaudeFiles.push(...files)
-        } catch (err) {
-          console.log(`[ClaudeUsage] Directory not accessible: ${dir}`, err)
+        } catch {
+          // Directory not accessible
         }
       }
 
-      console.log(`[ClaudeUsage] Total files found: ${allClaudeFiles.length}`)
       // Sort files by modification time (most recent first) for better deduplication
       const sortedClaudeFiles = await getMostRecentFiles(allClaudeFiles, allClaudeFiles.length)
-      console.log(`[ClaudeUsage] Processing all ${sortedClaudeFiles.length} files`)
 
       // Shared set for deduplication across all files (ccusage approach)
       const processedHashes = new Set<string>()
 
-      let isFirstFile = true
       for (const file of sortedClaudeFiles) {
-        const entries = await parseClaudeJSONLFile(file, pricing, processedHashes, isFirstFile)
-        if (entries.length > 0) {
-          console.log(`[ClaudeUsage] File ${basename(file)}: ${entries.length} entries`)
-        }
+        const entries = await parseClaudeJSONLFile(file, pricing, processedHashes)
         allEntries.push(...entries)
-        isFirstFile = false
       }
-      console.log(`[ClaudeUsage] Total Claude entries: ${allEntries.length}`)
     } catch (error) {
       console.error('[ClaudeUsage] Error reading Claude usage files:', error)
     }

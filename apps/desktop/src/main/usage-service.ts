@@ -52,7 +52,6 @@ async function saveCursorTokenToStorage(token: string | null): Promise<void> {
     const encrypted = safeStorage.encryptString(token)
     await mkdir(app.getPath('userData'), { recursive: true })
     await writeFile(tokenPath, encrypted)
-    console.log('[CursorToken] Token saved to encrypted storage')
   } catch (error) {
     console.error('[CursorToken] Failed to save token:', (error as Error).message)
   }
@@ -71,7 +70,6 @@ async function loadCursorTokenFromStorage(): Promise<string | null> {
     const tokenPath = getCursorTokenPath()
     const encrypted = await readFile(tokenPath)
     const token = safeStorage.decryptString(encrypted)
-    console.log('[CursorToken] Token loaded from encrypted storage')
     return token
   } catch {
     // File doesn't exist or can't be read
@@ -87,7 +85,6 @@ export async function initCursorToken(): Promise<void> {
   const token = await loadCursorTokenFromStorage()
   if (token) {
     cursorSessionToken = token
-    console.log('[CursorToken] Initialized from storage')
   }
 }
 
@@ -261,8 +258,7 @@ async function getTokenFromCredentialsFile(): Promise<TokenResult | null> {
       rateLimitTier: oauth.rateLimitTier,
       source: 'credentials_file'
     }
-  } catch (error) {
-    console.debug('Could not read credentials file:', (error as Error).message)
+  } catch {
     return null
   }
 }
@@ -382,8 +378,7 @@ async function getCodexTokenFromAuthFile(): Promise<TokenResult | null> {
       return null
     }
     return { token, source: 'auth_file' }
-  } catch (error) {
-    console.debug('Could not read Codex auth file:', (error as Error).message)
+  } catch {
     return null
   }
 }
@@ -472,7 +467,6 @@ async function getCodexUsageUpdate(): Promise<CodexUsageData> {
 export async function setCursorToken(token: string | null): Promise<void> {
   cursorSessionToken = token
   await saveCursorTokenToStorage(token)
-  console.log('[CursorToken]', token ? 'Set and saved' : 'Cleared')
 }
 
 /**
@@ -610,8 +604,6 @@ export function startPolling(callback: (update: UsageUpdate) => void): void {
     const update = await getUsageUpdate()
     if (pollCallback) pollCallback(update)
   }, pollIntervalMs)
-
-  console.log(`Usage polling started (every ${pollIntervalMs / 1000}s)`)
 }
 
 /**
@@ -622,7 +614,6 @@ export function stopPolling(): void {
     clearInterval(pollInterval)
     pollInterval = null
     pollCallback = null
-    console.log('Usage polling stopped')
   }
 }
 
@@ -649,7 +640,6 @@ export function setPollInterval(nextIntervalMs: number): number {
     }, pollIntervalMs)
   }
 
-  console.log(`Usage polling interval set to ${pollIntervalMs / 1000}s`)
   return pollIntervalMs
 }
 
@@ -666,8 +656,6 @@ export type ProviderName = 'claude' | 'codex' | 'cursor'
  * Refreshes usage data for a specific provider
  */
 export async function refreshProvider(provider: ProviderName): Promise<UsageUpdate> {
-  console.log(`[UsageService] Refreshing ${provider} usage...`)
-
   // Get current cached values for other providers (we'll use the last known values)
   const currentUpdate = await getUsageUpdate()
 

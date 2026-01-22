@@ -1,8 +1,6 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import type { UsageUpdate, RecentUsagesData, ProviderName, UsageFilterMode, ProviderFilter } from '../types/usage'
 
-console.log('[Preload] Script loading...')
-
 // Expose protected methods to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
   // Example IPC methods
@@ -57,5 +55,3 @@ contextBridge.exposeInMainWorld('electronAPI', {
     refreshProvider: (provider: ProviderName): Promise<UsageUpdate> => ipcRenderer.invoke('refresh-provider', provider)
   }
 })
-
-console.log('[Preload] Script loaded successfully, electronAPI exposed')

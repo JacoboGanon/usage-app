@@ -105,15 +105,15 @@ function UsageRow({ entry }: { entry: RecentUsageEntry }) {
       <td className="py-3 px-4">
         <span className="text-slate-400 text-sm font-mono">{formatModel(entry.model)}</span>
       </td>
-      <td className="py-3 px-4 text-right">
+      <td className="hidden lg:table-cell py-3 px-4 text-right">
         <span className="text-slate-300 text-sm font-mono">
           {formatTokens(entry.inputTokens + entry.cacheCreationTokens + entry.cacheReadTokens)}
         </span>
       </td>
-      <td className="py-3 px-4 text-right">
+      <td className="hidden lg:table-cell py-3 px-4 text-right">
         <span className="text-slate-300 text-sm font-mono">{formatTokens(entry.outputTokens)}</span>
       </td>
-      <td className="py-3 px-4 text-right">
+      <td className="hidden lg:table-cell py-3 px-4 text-right">
         {(entry.cacheCreationTokens > 0 || entry.cacheReadTokens > 0) ? (
           <span className="text-cyan-400 text-sm font-mono">
             {formatTokens(entry.cacheReadTokens)}
@@ -366,7 +366,7 @@ export function RecentUsagesTable({ className = '' }: RecentUsagesTableProps) {
       </div>
 
       <div className="overflow-x-auto -mx-8 px-8">
-        <table className="w-full min-w-[600px]">
+        <table className="w-full min-w-[400px] lg:min-w-[600px]">
           <thead>
             <tr className="border-b border-white/10">
               <th className="text-left py-3 px-4 text-[10px] text-slate-500 uppercase tracking-widest font-medium">
@@ -378,13 +378,13 @@ export function RecentUsagesTable({ className = '' }: RecentUsagesTableProps) {
               <th className="text-left py-3 px-4 text-[10px] text-slate-500 uppercase tracking-widest font-medium">
                 Model
               </th>
-              <th className="text-right py-3 px-4 text-[10px] text-slate-500 uppercase tracking-widest font-medium">
+              <th className="hidden lg:table-cell text-right py-3 px-4 text-[10px] text-slate-500 uppercase tracking-widest font-medium">
                 Input
               </th>
-              <th className="text-right py-3 px-4 text-[10px] text-slate-500 uppercase tracking-widest font-medium">
+              <th className="hidden lg:table-cell text-right py-3 px-4 text-[10px] text-slate-500 uppercase tracking-widest font-medium">
                 Output
               </th>
-              <th className="text-right py-3 px-4 text-[10px] text-slate-500 uppercase tracking-widest font-medium">
+              <th className="hidden lg:table-cell text-right py-3 px-4 text-[10px] text-slate-500 uppercase tracking-widest font-medium">
                 Cache
               </th>
               <th className="text-right py-3 px-4 text-[10px] text-slate-500 uppercase tracking-widest font-medium">
