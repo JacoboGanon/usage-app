@@ -1,0 +1,41 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["out/**", "dist/**", ".astro/**"]
+    },
+    "package": {
+      "dependsOn": ["build"],
+      "outputs": ["dist/**"],
+      "cache": false
+    },
+    "package:mac": {
+      "dependsOn": ["build"],
+      "outputs": ["dist/**"],
+      "cache": false
+    },
+    "package:win": {
+      "dependsOn": ["build"],
+      "outputs": ["dist/**"],
+      "cache": false
+    },
+    "package:linux": {
+      "dependsOn": ["build"],
+      "outputs": ["dist/**"],
+      "cache": false
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "cache": false
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"]
+    },
+    "lint": {}
+  }
+}

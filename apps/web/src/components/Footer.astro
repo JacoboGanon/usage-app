@@ -1,0 +1,42 @@
+---
+const links = [
+  { label: 'GitHub', href: 'https://github.com/jacobo/usage-app' },
+  { label: 'Releases', href: 'https://github.com/jacobo/usage-app/releases' },
+  { label: 'Issues', href: 'https://github.com/jacobo/usage-app/issues' }
+]
+---
+
+<footer class="py-12 px-6 border-t border-white/5">
+  <div class="max-w-6xl mx-auto">
+    <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+      <!-- Logo -->
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-accent-1 to-accent-2 flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        </div>
+        <span class="font-semibold text-white">Usage Console</span>
+      </div>
+
+      <!-- Links -->
+      <nav class="flex items-center gap-6">
+        {links.map((link) => (
+          <a
+            href={link.href}
+            target="_blank"
+            rel="noopener"
+            class="text-slate-400 hover:text-white transition-colors text-sm"
+          >
+            {link.label}
+          </a>
+        ))}
+      </nav>
+
+      <!-- Copyright -->
+      <p class="text-slate-500 text-sm">
+        Open source under MIT License
+      </p>
+    </div>
+  </div>
+</footer>

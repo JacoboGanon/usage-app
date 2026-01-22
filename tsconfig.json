@@ -7,13 +7,6 @@
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true
-  },
-  "references": [
-    { "path": "./tsconfig.main.json" },
-    { "path": "./tsconfig.preload.json" },
-    { "path": "./tsconfig.renderer.json" }
-  ],
-  "files": []
+    "isolatedModules": true
+  }
 }

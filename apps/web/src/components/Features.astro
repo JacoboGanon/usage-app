@@ -1,0 +1,76 @@
+---
+const features = [
+  {
+    title: 'Claude Usage',
+    description: 'Track your Anthropic API usage with detailed model breakdowns for Opus, Sonnet, and Haiku.',
+    icon: 'M13 10V3L4 14h7v7l9-11h-7z',
+    color: 'text-accent-1',
+    bgColor: 'bg-accent-1/10'
+  },
+  {
+    title: 'ChatGPT / Codex',
+    description: 'Monitor your OpenAI ChatGPT Pro and Codex CLI usage with real-time updates.',
+    icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+    color: 'text-emerald-400',
+    bgColor: 'bg-emerald-400/10'
+  },
+  {
+    title: 'Cursor Tracking',
+    description: 'Keep tabs on your Cursor AI IDE usage with premium request monitoring.',
+    icon: 'M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z',
+    color: 'text-orange-400',
+    bgColor: 'bg-orange-400/10'
+  },
+  {
+    title: 'Reset Countdown',
+    description: 'Always know when your usage limits reset with live countdown timers.',
+    icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
+    color: 'text-purple-400',
+    bgColor: 'bg-purple-400/10'
+  },
+  {
+    title: 'Auto-Refresh',
+    description: 'Configurable polling intervals keep your data fresh without manual refreshes.',
+    icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
+    color: 'text-cyan-400',
+    bgColor: 'bg-cyan-400/10'
+  },
+  {
+    title: 'Beautiful UI',
+    description: 'Glassmorphic design with smooth animations and a dark theme that respects your eyes.',
+    icon: 'M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01',
+    color: 'text-pink-400',
+    bgColor: 'bg-pink-400/10'
+  }
+]
+---
+
+<section id="features" class="py-24 px-6">
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-16">
+      <h2 class="text-4xl font-bold mb-4">
+        <span class="gradient-text">Everything You Need</span>
+      </h2>
+      <p class="text-slate-400 text-lg max-w-2xl mx-auto">
+        One dashboard to rule them all. Monitor your AI coding tool usage without switching between apps.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {features.map((feature, index) => (
+        <div
+          class="glass-card group"
+          style={`animation: fade-in 0.6s ease-out ${0.1 * index}s both`}
+        >
+          <div class={`w-12 h-12 rounded-xl ${feature.bgColor} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+            <svg xmlns="http://www.w3.org/2000/svg" class={`w-6 h-6 ${feature.color}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={feature.icon} />
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold mb-2 text-white">{feature.title}</h3>
+          <p class="text-slate-400">{feature.description}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

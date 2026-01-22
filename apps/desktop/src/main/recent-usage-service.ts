@@ -343,7 +343,7 @@ async function parseClaudeJSONLFile(
       console.log(`[ClaudeUsage] Total lines in file: ${lines.length}`)
     }
 
-    let debugStats = { total: 0, noUsage: 0, duplicate: 0, valid: 0 }
+    const debugStats = { total: 0, noUsage: 0, duplicate: 0, valid: 0 }
 
     for (const line of lines) {
       try {
