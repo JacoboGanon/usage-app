@@ -54,7 +54,6 @@ jobs:
     needs: [version]
     if: always() && (needs.version.result == 'success' || needs.version.result == 'skipped')
     runs-on: ubuntu-latest
-    environment: release
     steps:
       - uses: actions/checkout@v4
         with:
@@ -170,7 +169,6 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    environment: release
     permissions:
       contents: write
     steps:
