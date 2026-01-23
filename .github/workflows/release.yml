@@ -13,56 +13,94 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 env:
-  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  NODE_VERSION: 20
+  PNPM_VERSION: 10.28.1
 
 jobs:
-  # Bump version if manually dispatched
-  version:
+  prepare:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+      tag: ${{ steps.ref.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
 
-      - name: Update version in package.json
+      - name: Ensure tag does not exist
         run: |
-          cd apps/desktop
-          npm --version
-          npm version ${{ github.event.inputs.version }} --no-git-tag-version
+          TAG="v${{ github.event.inputs.version }}"
+          if git rev-parse -q --verify "refs/tags/${TAG}"; then
+            echo "Tag ${TAG} already exists."
+            exit 1
+          fi
+
+      - name: Update desktop version
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'apps/desktop/package.json';
+          const version = process.env.RELEASE_VERSION;
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          if (pkg.version === version) {
+            console.error(`apps/desktop/package.json already at ${version}.`);
+            process.exit(1);
+          }
+          pkg.version = version;
+          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+
+      - name: Commit and tag
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json
-          git commit -m "Bump version to ${{ github.event.inputs.version }}"
-          git tag "v${{ github.event.inputs.version }}"
+          git add apps/desktop/package.json
+          git commit -m "Bump version to ${RELEASE_VERSION}"
+          git tag "v${RELEASE_VERSION}"
           git push origin HEAD:${{ github.ref_name }}
-          git push origin "v${{ github.event.inputs.version }}"
+          git push origin "v${RELEASE_VERSION}"
 
-  # Run tests before releasing
+      - id: ref
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          echo "ref=refs/tags/v${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+
   test:
-    needs: [version]
-    if: always() && (needs.version.result == 'success' || needs.version.result == 'skipped')
+    needs: [prepare]
+    if: always() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', github.event.inputs.version) || github.ref }}
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.ref != '' && needs.prepare.outputs.ref || github.ref }}
 
       - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -74,116 +112,77 @@ jobs:
       - name: Run tests
         run: pnpm run test
 
-  # Build and publish with electron-builder
   build:
     needs: test
-    if: ${{ needs.test.result == 'success' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # macOS builds
           - os: macos-13
             arch: x64
-            platform: darwin
-            script: package:mac
+            script: package:mac:x64
           - os: macos-latest
             arch: arm64
-            platform: darwin
-            script: package:mac
-          # Windows builds
-          - os: windows-latest
-            arch: x64
-            platform: win32
-            script: package:win
-          # Linux builds
-          - os: ubuntu-latest
-            arch: x64
-            platform: linux
-            script: package:linux
+            script: package:mac:arm64
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', github.event.inputs.version) || github.ref }}
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.ref != '' && needs.prepare.outputs.ref || github.ref }}
 
       - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install
 
-      # macOS certificate handling
-      - name: Setup macOS certificate
-        if: matrix.platform == 'darwin' && env.MAC_CERTIFICATE != ''
-        env:
-          MAC_CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
-          MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-        run: |
-          echo "$MAC_CERTIFICATE" | base64 --decode > certificate.p12
-          security create-keychain -p actions build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p actions build.keychain
-          security import certificate.p12 -k build.keychain -P "$MAC_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
-          rm certificate.p12
-
-      # Linux dependencies
-      - name: Install Linux dependencies
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y rpm squashfs-tools
+      - name: Clean previous installers
+        run: rm -rf apps/desktop/dist/*
 
       - name: Build desktop app
         run: pnpm run build:desktop
 
-      - name: Package with electron-builder
+      - name: Package macOS app
         working-directory: apps/desktop
-        run: pnpm run ${{ matrix.script }} -- --publish never
         env:
-          # macOS signing
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_LINK: ${{ matrix.platform == 'darwin' && secrets.MAC_CERTIFICATE || '' }}
-          CSC_KEY_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.MAC_CERTIFICATE_PASSWORD || '' }}
-          # Windows signing (optional)
-          CSC_LINK_WIN: ${{ matrix.platform == 'win32' && secrets.WIN_CERTIFICATE || '' }}
-          CSC_KEY_PASSWORD_WIN: ${{ matrix.platform == 'win32' && secrets.WIN_CERTIFICATE_PASSWORD || '' }}
+          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+        run: pnpm run ${{ matrix.script }} -- --publish never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-${{ matrix.arch }}-artifacts
+          name: macos-${{ matrix.arch }}-artifacts
           path: apps/desktop/dist/**/*
           if-no-files-found: error
           retention-days: 1
 
-  # Create GitHub Release
   publish:
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', github.event.inputs.version) || github.ref }}
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Create Release
+      - name: Create draft release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', github.event.inputs.version) || github.ref_name }}
+          tag_name: ${{ needs.prepare.outputs.tag != '' && needs.prepare.outputs.tag || github.ref_name }}
           draft: true
           files: artifacts/**/*
         env:
