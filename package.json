@@ -23,7 +23,6 @@
     "desktop-app"
   ],
   "packageManager": "pnpm@10.28.1",
-  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "turbo run dev",
     "dev:desktop": "turbo run dev --filter=@usage-app/desktop",
