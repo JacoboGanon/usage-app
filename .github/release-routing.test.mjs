@@ -12,3 +12,16 @@ test('both macOS artifacts build through the Mini route without obsolete Intel r
 });
 
 test('release publishing uses a supported Node action runtime',()=>assert.doesNotMatch(source,/softprops\/action-gh-release@v1/));
+
+test('signing uses protected API credentials and a memory budget suitable for the Mini',()=>{
+ const build=source.slice(source.indexOf('\n  build:'),source.indexOf('\n  publish:'));
+ assert.match(build,/environment: mac-build/);
+ assert.match(build,/NODE_OPTIONS:.*max-old-space-size=4096/);
+ assert.match(build,/CSC_LINK:.*secrets.MAC_CSC_LINK/);
+ assert.match(build,/APPLE_API_KEY_ID:.*secrets.APPLE_API_KEY_ID/);
+ assert.match(build,/forceCodeSigning=true/);
+ assert.match(build,/mac.notarize=true/);
+ assert.match(build,/--mac.*--publish never/);
+ assert.doesNotMatch(build,/APPLE_APP_SPECIFIC_PASSWORD|matrix.script/);
+ assert.match(build,/name: Remove notarization key\n\s+if: always\(\)/);
+});

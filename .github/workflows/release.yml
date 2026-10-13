@@ -180,15 +180,17 @@ jobs:
 
   build:
     needs: [ test, prepare, ci-route ]
+    environment: mac-build
+    timeout-minutes: 90
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     runs-on: ${{ fromJSON(needs['ci-route'].outputs.macos) }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x64
-            script: package:mac:x64
           - arch: arm64
-            script: package:mac:arm64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -213,16 +215,29 @@ jobs:
       - name: Build desktop app
         run: pnpm run build:desktop
 
+      - name: Prepare notarization key
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          umask 077
+          printenv APPLE_API_KEY_CONTENT > "$RUNNER_TEMP/notarization.p8"
+          test -s "$RUNNER_TEMP/notarization.p8"
+
       - name: Package macOS app
         working-directory: apps/desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-        run: pnpm run ${{ matrix.script }} -- --publish never
+          APPLE_API_KEY: ${{ runner.temp }}/notarization.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          BUILD_ARCH: ${{ matrix.arch }}
+        run: pnpm exec electron-builder --config electron-builder.config.ts --mac --"$BUILD_ARCH" --publish never -c.forceCodeSigning=true -c.mac.notarize=true
+
+      - name: Remove notarization key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/notarization.p8"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
