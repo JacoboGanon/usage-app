@@ -38,4 +38,5 @@
   Example: `git tag v1.2.3 && git push origin v1.2.3`.
 - Alternative: GitHub Actions → Release → Run workflow with a version number.
 - The workflow builds macOS x64 and arm64 artifacts and creates a draft release; publish it after review.
+- To validate signing without changing versions, dispatch Release on `main` with `artifacts_only=true` and the current version. This skips version/tag preparation and draft release creation, and retains signed installers as Actions artifacts.
 - Mac builds use the protected `mac-build` environment with `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`. Both architectures are packaged on ARM macOS with a 4 GiB Node heap limit.

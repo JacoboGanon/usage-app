@@ -2,6 +2,37 @@ import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 const source=readFileSync(new URL('./workflows/release.yml',import.meta.url),'utf8');
+
+function jobEnabled(name, {event, artifactsOnly, prepare = 'success', build = 'success', validation = 'success'}) {
+ const job=source.split(`\n  ${name}:\n`)[1]?.split(/\n  \S/)[0];
+ const line=job?.match(/^    if: (.+)$/m)?.[1];
+ assert.ok(line, `Missing condition for ${name}`);
+ const expression=line.replace(/^"|"$/g,'').replace(/^\$\{\{\s*|\s*\}\}$/g,'');
+ return new Function('needs','github','inputs','always','cancelled',`return (${expression})`)(
+  {'ci-route':{result:'success'},prepare:{result:prepare},build:{result:build},test:{result:validation}},
+  {event_name:event}, {artifacts_only:artifactsOnly}, ()=>true, ()=>false,
+ );
+}
+
+test('artifact-only runs never prepare a version or create a draft release',()=>{
+ assert.match(source,/artifacts_only:\n\s+description:.*\n\s+type: boolean\n\s+default: false/);
+ const run={event:'workflow_dispatch',artifactsOnly:true,prepare:'skipped'};
+ assert.equal(jobEnabled('prepare',run),false);
+ assert.equal(jobEnabled('publish',run),false);
+ assert.equal(jobEnabled('test',run),true);
+ assert.equal(jobEnabled('build',run),true);
+ assert.equal(jobEnabled('build',{...run,validation:'failure'}),false);
+});
+
+test('explicit releases retain their prepare and publish paths and require a successful build',()=>{
+ const manual={event:'workflow_dispatch',artifactsOnly:false};
+ assert.equal(jobEnabled('prepare',manual),true);
+ assert.equal(jobEnabled('publish',manual),true);
+ assert.equal(jobEnabled('publish',{...manual,build:'failure'}),false);
+ const tag={event:'push',artifactsOnly:undefined,prepare:'skipped'};
+ assert.equal(jobEnabled('prepare',tag),false);
+ assert.equal(jobEnabled('publish',tag),true);
+});
 test('both macOS artifacts build through the Mini route without obsolete Intel runners',()=>{
  assert.match(source,/build:\n\s+needs: \[\s*test, prepare, ci-route\s*\]/);
  assert.match(source,/runs-on:.*outputs\.macos/);

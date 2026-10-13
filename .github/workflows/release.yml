@@ -10,6 +10,10 @@ on:
         description: 'Version to release (e.g., 1.0.0)'
         required: true
         type: string
+      artifacts_only:
+        description: 'Build signed installers without changing the version or creating a release'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -82,7 +86,7 @@ jobs:
             }
             await core.summary.addRaw('Runner policy: ' + reason).write();
   prepare:
-    if: ${{ needs['ci-route'].result == 'success' && (github.event_name == 'workflow_dispatch') }}
+    if: ${{ needs['ci-route'].result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.artifacts_only }}
     runs-on: ${{ fromJSON(needs['ci-route'].outputs.linux) }}
     outputs:
       ref: ${{ steps.ref.outputs.ref }}
@@ -267,4 +271,4 @@ jobs:
           files: artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    if: "${{ needs['ci-route'].result == 'success' && (!cancelled() && needs.build.result == 'success' && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')) }}"
+    if: "${{ needs['ci-route'].result == 'success' && !inputs.artifacts_only && (!cancelled() && needs.build.result == 'success' && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')) }}"
