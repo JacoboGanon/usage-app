@@ -10,6 +10,10 @@ on:
         description: 'Version to release (e.g., 1.0.0)'
         required: true
         type: string
+      artifacts_only:
+        description: 'Build signed installers without changing the version or creating a release'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -19,9 +23,71 @@ env:
   PNPM_VERSION: 10.28.1
 
 jobs:
-  prepare:
-    if: github.event_name == 'workflow_dispatch'
+  ci-route:
+    name: Choose CI runner
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      checks: read
+    outputs:
+      linux: ${{ steps.route.outputs.linux }}
+      macos: ${{ steps.route.outputs.macos }}
+      reason: ${{ steps.route.outputs.reason }}
+    steps:
+      - id: route
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          CI_HEARTBEAT_CHECK_ID: ${{ vars.CI_HEARTBEAT_CHECK_ID }}
+        with:
+          script: |-
+            function chooseRunner({ heartbeat, now, hostId, localLabels, owner, fallback }) {
+              const linux = Array.isArray(localLabels) && localLabels.includes('Linux');
+              const organizationPattern = linux ? /^blacksmith-(2|4|8|16|32)vcpu-ubuntu-2404-arm$/ : /^blacksmith-(6|12)vcpu-macos-\d+$/;
+              const personalPattern = linux ? /^ubuntu-24\.04-arm$/ : /^macos-\d+$/;
+              const validFallback = owner.toLowerCase() === 'probus-team'
+                ? organizationPattern.test(fallback)
+                : owner.toLowerCase() === 'jacoboganon' && personalPattern.test(fallback);
+              if (!Number.isSafeInteger(now) || now <= 0 || !hostId || !validFallback ||
+                  !Array.isArray(localLabels) || !['self-hosted', linux ? 'Linux' : 'macOS', 'ARM64'].every(label => localLabels.includes(label)) ||
+                  localLabels.length < 4 || localLabels.some(label => typeof label !== 'string' || !label)) {
+                throw new Error('Invalid Mac runner routing configuration');
+              }
+              if (!heartbeat || heartbeat.version !== 1 || heartbeat.hostId !== hostId ||
+                  !Number.isSafeInteger(heartbeat.observedAt) || heartbeat.observedAt <= 0 || heartbeat.observedAt > now + 30000 ||
+                  typeof heartbeat.busy !== 'boolean' || typeof heartbeat.ready !== 'boolean' || heartbeat.slots !== 1) {
+                throw new Error('Host heartbeat is missing or invalid');
+              }
+              if (now - heartbeat.observedAt > 300000) return { runsOn: [fallback], reason: 'local-offline', busy: false };
+              if (!heartbeat.ready) throw new Error('Mac host is online but not ready');
+              return { runsOn: [...localLabels], reason: heartbeat.busy ? 'local-busy' : 'local-online', busy: heartbeat.busy };
+            }
+            const repository = context.repo.owner + '/' + context.repo.repo;
+            if (context.payload.pull_request && context.payload.pull_request.head.repo.full_name.toLowerCase() !== repository.toLowerCase()) {
+              throw new Error('External fork code requires a separate reviewed CI policy.');
+            }
+            const checkId = Number(process.env.CI_HEARTBEAT_CHECK_ID);
+            if (!Number.isSafeInteger(checkId) || checkId <= 0) throw new Error('Invalid heartbeat check identifier');
+            const { data: check } = await github.rest.checks.get({ ...context.repo, check_run_id: checkId });
+            if (check.app?.id !== 5295245 || check.name !== 'Portfolio CI host' || check.external_id !== 'runners-m4') {
+              throw new Error('Invalid heartbeat check identity');
+            }
+            const heartbeat = JSON.parse(check.output.summary);
+            let reason;
+            for (const [platform, os] of [['linux', 'Linux'], ['macos', 'macOS']]) {
+              const organization = context.repo.owner.toLowerCase() === 'probus-team';
+              const fallback = platform === 'linux'
+                ? (organization ? 'blacksmith-4vcpu-ubuntu-2404-arm' : 'ubuntu-24.04-arm')
+                : (organization ? 'blacksmith-6vcpu-macos-26' : 'macos-26');
+              const decision = chooseRunner({ heartbeat, now: Date.now(), hostId: 'runners-m4',
+                localLabels: ['self-hosted', os, 'ARM64', 'portfolio-m4'], owner: context.repo.owner, fallback });
+              core.setOutput(platform, JSON.stringify(decision.runsOn));
+              reason = decision.reason;
+              core.setOutput('reason', reason);
+            }
+            await core.summary.addRaw('Runner policy: ' + reason).write();
+  prepare:
+    if: ${{ needs['ci-route'].result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.artifacts_only }}
+    runs-on: ${{ fromJSON(needs['ci-route'].outputs.linux) }}
     outputs:
       ref: ${{ steps.ref.outputs.ref }}
       tag: ${{ steps.ref.outputs.tag }}
@@ -83,11 +149,15 @@ jobs:
         run: |
           echo "ref=refs/tags/v${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=v${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+    needs:
+      - ci-route
 
   test:
-    needs: [prepare]
-    if: always() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
-    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - ci-route
+    if: ${{ needs['ci-route'].result == 'success' && (always() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')) }}
+    runs-on: ${{ fromJSON(needs['ci-route'].outputs.linux) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -113,18 +183,18 @@ jobs:
         run: pnpm run test
 
   build:
-    needs: test
-    runs-on: ${{ matrix.os }}
+    needs: [ test, prepare, ci-route ]
+    environment: mac-build
+    timeout-minutes: 90
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+    runs-on: ${{ fromJSON(needs['ci-route'].outputs.macos) }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-13
-            arch: x64
-            script: package:mac:x64
-          - os: macos-latest
-            arch: arm64
-            script: package:mac:arm64
+          - arch: x64
+          - arch: arm64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -149,16 +219,29 @@ jobs:
       - name: Build desktop app
         run: pnpm run build:desktop
 
+      - name: Prepare notarization key
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          umask 077
+          printenv APPLE_API_KEY_CONTENT > "$RUNNER_TEMP/notarization.p8"
+          test -s "$RUNNER_TEMP/notarization.p8"
+
       - name: Package macOS app
         working-directory: apps/desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-        run: pnpm run ${{ matrix.script }} -- --publish never
+          APPLE_API_KEY: ${{ runner.temp }}/notarization.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          BUILD_ARCH: ${{ matrix.arch }}
+        run: pnpm exec electron-builder --config electron-builder.config.ts --mac --"$BUILD_ARCH" --publish never -c.forceCodeSigning=true -c.mac.notarize=true
+
+      - name: Remove notarization key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/notarization.p8"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -167,10 +250,11 @@ jobs:
           path: apps/desktop/dist/**/*
           if-no-files-found: error
           retention-days: 1
+    if: "${{ needs['ci-route'].result == 'success' && (!cancelled() && needs.test.result == 'success' && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')) }}"
 
   publish:
-    needs: build
-    runs-on: ubuntu-latest
+    needs: [ build, prepare, ci-route ]
+    runs-on: ${{ fromJSON(needs['ci-route'].outputs.linux) }}
     permissions:
       contents: write
     steps:
@@ -180,10 +264,11 @@ jobs:
           path: artifacts
 
       - name: Create draft release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag != '' && needs.prepare.outputs.tag || github.ref_name }}
           draft: true
           files: artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    if: "${{ needs['ci-route'].result == 'success' && !inputs.artifacts_only && (!cancelled() && needs.build.result == 'success' && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')) }}"
