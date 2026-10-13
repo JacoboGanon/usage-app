@@ -34,4 +34,8 @@
 - For desktop settings, follow existing storage patterns (safeStorage + localStorage).
 
 ## Release Process (Desktop App)
-- Recommended: tag a version and push it to trigger the release workflow.\n  Example: `git tag v1.2.3 && git push origin v1.2.3`.\n- Alternative: GitHub Actions → Release → Run workflow with a version number.\n- The workflow builds macOS/Windows/Linux and creates a draft release; publish it after review.\n- Mac builds use the protected `mac-build` environment with `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`. Both architectures are packaged on ARM macOS with a 4 GiB Node heap limit.
+- Recommended: tag a version and push it to trigger the release workflow.
+  Example: `git tag v1.2.3 && git push origin v1.2.3`.
+- Alternative: GitHub Actions → Release → Run workflow with a version number.
+- The workflow builds macOS x64 and arm64 artifacts and creates a draft release; publish it after review.
+- Mac builds use the protected `mac-build` environment with `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`. Both architectures are packaged on ARM macOS with a 4 GiB Node heap limit.
