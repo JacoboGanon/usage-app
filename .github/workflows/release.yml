@@ -40,7 +40,7 @@ jobs:
           CI_HEARTBEAT_CHECK_ID: ${{ vars.CI_HEARTBEAT_CHECK_ID }}
         with:
           script: |-
-            function chooseRunner({ heartbeat, now, hostId, localLabels, owner, fallback }) {
+            function chooseRunner({ heartbeat, now, hostId, localLabels, owner, fallback, maxWaitMs = 1800000 }) {
               const linux = Array.isArray(localLabels) && localLabels.includes('Linux');
               const organizationPattern = linux ? /^blacksmith-(2|4|8|16|32)vcpu-ubuntu-2404-arm$/ : /^blacksmith-(6|12)vcpu-macos-\d+$/;
               const personalPattern = linux ? /^ubuntu-24\.04-arm$/ : /^macos-\d+$/;
@@ -48,17 +48,22 @@ jobs:
                 ? organizationPattern.test(fallback)
                 : owner.toLowerCase() === 'jacoboganon' && personalPattern.test(fallback);
               if (!Number.isSafeInteger(now) || now <= 0 || !hostId || !validFallback ||
+                  !Number.isSafeInteger(maxWaitMs) || maxWaitMs <= 0 ||
                   !Array.isArray(localLabels) || !['self-hosted', linux ? 'Linux' : 'macOS', 'ARM64'].every(label => localLabels.includes(label)) ||
                   localLabels.length < 4 || localLabels.some(label => typeof label !== 'string' || !label)) {
                 throw new Error('Invalid Mac runner routing configuration');
               }
               if (!heartbeat || heartbeat.version !== 1 || heartbeat.hostId !== hostId ||
                   !Number.isSafeInteger(heartbeat.observedAt) || heartbeat.observedAt <= 0 || heartbeat.observedAt > now + 30000 ||
-                  typeof heartbeat.busy !== 'boolean' || typeof heartbeat.ready !== 'boolean' || heartbeat.slots !== 1) {
+                  typeof heartbeat.busy !== 'boolean' || typeof heartbeat.ready !== 'boolean' ||
+                  !Number.isSafeInteger(heartbeat.slots) || heartbeat.slots < 1 || heartbeat.slots > 3 ||
+                  (heartbeat.queue !== undefined && (!heartbeat.queue || !Number.isSafeInteger(heartbeat.queue.jobs) || heartbeat.queue.jobs < 0 ||
+                    !Number.isSafeInteger(heartbeat.queue.expectedWaitMs) || heartbeat.queue.expectedWaitMs < 0))) {
                 throw new Error('Host heartbeat is missing or invalid');
               }
               if (now - heartbeat.observedAt > 300000) return { runsOn: [fallback], reason: 'local-offline', busy: false };
               if (!heartbeat.ready) throw new Error('Mac host is online but not ready');
+              if (heartbeat.queue && heartbeat.queue.expectedWaitMs > maxWaitMs) return { runsOn: [fallback], reason: 'local-queue-long', busy: true };
               return { runsOn: [...localLabels], reason: heartbeat.busy ? 'local-busy' : 'local-online', busy: heartbeat.busy };
             }
             const repository = context.repo.owner + '/' + context.repo.repo;
