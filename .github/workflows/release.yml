@@ -63,7 +63,8 @@ jobs:
               }
               if (now - heartbeat.observedAt > 300000) return { runsOn: [fallback], reason: 'local-offline', busy: false };
               if (!heartbeat.ready) throw new Error('Mac host is online but not ready');
-              if (heartbeat.queue && heartbeat.queue.expectedWaitMs > maxWaitMs) return { runsOn: [fallback], reason: 'local-queue-long', busy: true };
+              // macOS cloud runners cost far more than Linux ones, so macOS jobs wait for the Mini however long the queue.
+              if (linux && heartbeat.queue && heartbeat.queue.expectedWaitMs > maxWaitMs) return { runsOn: [fallback], reason: 'local-queue-long', busy: true };
               return { runsOn: [...localLabels], reason: heartbeat.busy ? 'local-busy' : 'local-online', busy: heartbeat.busy };
             }
             const repository = context.repo.owner + '/' + context.repo.repo;
