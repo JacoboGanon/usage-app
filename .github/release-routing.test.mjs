@@ -9,7 +9,7 @@ function jobEnabled(name, {event, artifactsOnly, prepare = 'success', build = 's
  assert.ok(line, `Missing condition for ${name}`);
  const expression=line.replace(/^"|"$/g,'').replace(/^\$\{\{\s*|\s*\}\}$/g,'');
  return new Function('needs','github','inputs','always','cancelled',`return (${expression})`)(
-  {'ci-route':{result:'success'},prepare:{result:prepare},build:{result:build},test:{result:validation}},
+  {prepare:{result:prepare},build:{result:build},test:{result:validation}},
   {event_name:event}, {artifacts_only:artifactsOnly}, ()=>true, ()=>false,
  );
 }
@@ -34,11 +34,11 @@ test('explicit releases retain their prepare and publish paths and require a suc
  assert.equal(jobEnabled('publish',tag),true);
 });
 test('both macOS artifacts build through the Mini route without obsolete Intel runners',()=>{
- assert.match(source,/build:\n\s+needs: \[\s*test, prepare, ci-route\s*\]/);
- assert.match(source,/runs-on:.*outputs\.macos/);
+ assert.match(source,/build:\n\s+needs: \[\s*test, prepare\s*\]/);
+ assert.match(source,/runs-on:.*vars\.CI_RUNS_ON_MACOS/);
  assert.doesNotMatch(source,/macos-13|matrix\.os/);
  assert.match(source,/arch: x64/);assert.match(source,/arch: arm64/);
- assert.match(source,/publish:\n\s+needs: \[\s*build, prepare, ci-route\s*\]/);
+ assert.match(source,/publish:\n\s+needs: \[\s*build, prepare\s*\]/);
  assert.match(source,/needs\.test\.result == 'success'/);
 });
 
