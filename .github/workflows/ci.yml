@@ -17,76 +17,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  ci-route:
-    name: Choose CI runner
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      checks: read
-    outputs:
-      linux: ${{ steps.route.outputs.linux }}
-      macos: ${{ steps.route.outputs.macos }}
-      reason: ${{ steps.route.outputs.reason }}
-    steps:
-      - id: route
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
-        env:
-          CI_HEARTBEAT_CHECK_ID: ${{ vars.CI_HEARTBEAT_CHECK_ID }}
-        with:
-          script: |-
-            function chooseRunner({ heartbeat, now, hostId, localLabels, owner, fallback, maxWaitMs = 1800000 }) {
-              const linux = Array.isArray(localLabels) && localLabels.includes('Linux');
-              const organizationPattern = linux ? /^blacksmith-(2|4|8|16|32)vcpu-ubuntu-2404-arm$/ : /^blacksmith-(6|12)vcpu-macos-\d+$/;
-              const personalPattern = linux ? /^ubuntu-24\.04-arm$/ : /^macos-\d+$/;
-              const validFallback = owner.toLowerCase() === 'probus-team'
-                ? organizationPattern.test(fallback)
-                : owner.toLowerCase() === 'jacoboganon' && personalPattern.test(fallback);
-              if (!Number.isSafeInteger(now) || now <= 0 || !hostId || !validFallback ||
-                  !Number.isSafeInteger(maxWaitMs) || maxWaitMs <= 0 ||
-                  !Array.isArray(localLabels) || !['self-hosted', linux ? 'Linux' : 'macOS', 'ARM64'].every(label => localLabels.includes(label)) ||
-                  localLabels.length < 4 || localLabels.some(label => typeof label !== 'string' || !label)) {
-                throw new Error('Invalid Mac runner routing configuration');
-              }
-              if (!heartbeat || heartbeat.version !== 1 || heartbeat.hostId !== hostId ||
-                  !Number.isSafeInteger(heartbeat.observedAt) || heartbeat.observedAt <= 0 || heartbeat.observedAt > now + 30000 ||
-                  typeof heartbeat.busy !== 'boolean' || typeof heartbeat.ready !== 'boolean' ||
-                  !Number.isSafeInteger(heartbeat.slots) || heartbeat.slots < 1 || heartbeat.slots > 3 ||
-                  (heartbeat.queue !== undefined && (!heartbeat.queue || !Number.isSafeInteger(heartbeat.queue.jobs) || heartbeat.queue.jobs < 0 ||
-                    !Number.isSafeInteger(heartbeat.queue.expectedWaitMs) || heartbeat.queue.expectedWaitMs < 0))) {
-                throw new Error('Host heartbeat is missing or invalid');
-              }
-              if (now - heartbeat.observedAt > 300000) return { runsOn: [fallback], reason: 'local-offline', busy: false };
-              if (!heartbeat.ready) throw new Error('Mac host is online but not ready');
-              // macOS cloud runners cost far more than Linux ones, so macOS jobs wait for the Mini however long the queue.
-              if (linux && heartbeat.queue && heartbeat.queue.expectedWaitMs > maxWaitMs) return { runsOn: [fallback], reason: 'local-queue-long', busy: true };
-              return { runsOn: [...localLabels], reason: heartbeat.busy ? 'local-busy' : 'local-online', busy: heartbeat.busy };
-            }
-            const repository = context.repo.owner + '/' + context.repo.repo;
-            if (context.payload.pull_request && context.payload.pull_request.head.repo.full_name.toLowerCase() !== repository.toLowerCase()) {
-              throw new Error('External fork code requires a separate reviewed CI policy.');
-            }
-            const checkId = Number(process.env.CI_HEARTBEAT_CHECK_ID);
-            if (!Number.isSafeInteger(checkId) || checkId <= 0) throw new Error('Invalid heartbeat check identifier');
-            const { data: check } = await github.rest.checks.get({ ...context.repo, check_run_id: checkId });
-            if (check.app?.id !== 5295245 || check.name !== 'Portfolio CI host' || check.external_id !== 'runners-m4') {
-              throw new Error('Invalid heartbeat check identity');
-            }
-            const heartbeat = JSON.parse(check.output.summary);
-            let reason;
-            for (const [platform, os] of [['linux', 'Linux'], ['macos', 'macOS']]) {
-              const organization = context.repo.owner.toLowerCase() === 'probus-team';
-              const fallback = platform === 'linux'
-                ? (organization ? 'blacksmith-4vcpu-ubuntu-2404-arm' : 'ubuntu-24.04-arm')
-                : (organization ? 'blacksmith-6vcpu-macos-26' : 'macos-26');
-              const decision = chooseRunner({ heartbeat, now: Date.now(), hostId: 'runners-m4',
-                localLabels: ['self-hosted', os, 'ARM64', 'portfolio-m4'], owner: context.repo.owner, fallback });
-              core.setOutput(platform, JSON.stringify(decision.runsOn));
-              reason = decision.reason;
-              core.setOutput('reason', reason);
-            }
-            await core.summary.addRaw('Runner policy: ' + reason).write();
   test:
-    runs-on: ${{ fromJSON(needs['ci-route'].outputs.linux) }}
+    if: ${{ (!github.event.pull_request || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON_LINUX || '["ubuntu-24.04-arm"]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -113,5 +46,3 @@ jobs:
 
       - name: Run tests
         run: pnpm run test
-    needs:
-      - ci-route
