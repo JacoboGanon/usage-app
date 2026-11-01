@@ -42,7 +42,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: ${{ (runner.os != 'Linux' || !startsWith(runner.name, 'portfolio-m4-')) && 'pnpm' || '' }}
 
       - name: Ensure tag does not exist
         run: |
@@ -106,7 +106,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: ${{ (runner.os != 'Linux' || !startsWith(runner.name, 'portfolio-m4-')) && 'pnpm' || '' }}
 
       - name: Install dependencies
         run: pnpm install
