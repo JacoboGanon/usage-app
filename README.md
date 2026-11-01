@@ -91,7 +91,7 @@ bun run package:linux    # Package for Linux (AppImage, deb, rpm)
 # Quality
 bun run test             # Run all tests
 bun run typecheck        # TypeScript check all packages
-bun run lint             # ESLint all packages
+bun run lint             # Oxlint all packages
 ```
 
 ### Configuration

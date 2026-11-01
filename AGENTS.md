@@ -16,7 +16,7 @@
 
 ## Coding Style & Naming Conventions
 - TypeScript-first codebase; keep functions focused and naming descriptive.
-- Follow existing formatting and ESLint rules; run `bun run lint` before PRs.
+- Follow existing formatting and Oxlint rules (`apps/desktop/.oxlintrc.json`); run `bun run lint` before PRs.
 - Tests use `.test` naming (see `apps/desktop/tests/`).
 
 ## Testing Guidelines

@@ -30,7 +30,7 @@ bun run package:linux    # Linux (AppImage, deb, rpm)
 # Quality
 bun run test             # All tests
 bun run typecheck        # TypeScript check all packages
-bun run lint             # ESLint all packages
+bun run lint             # Oxlint all packages
 ```
 
 ## Releasing

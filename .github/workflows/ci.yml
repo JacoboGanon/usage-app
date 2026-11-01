@@ -20,8 +20,17 @@ jobs:
   test:
     if: ${{ (!github.event.pull_request || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON_LINUX || '["ubuntu-24.04-arm"]') }}
+    env:
+      # Pull requests run turbo tasks only for the packages they affect (and
+      # their dependents); pushes to main run everything.
+      TURBO_AFFECTED: ${{ github.event_name == 'pull_request' && '--affected' || '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history without file contents, so turbo --affected can diff
+          # against the merge base (it reads GITHUB_BASE_REF).
+          fetch-depth: 0
+          filter: blob:none
 
       - uses: pnpm/action-setup@v4
         with:
@@ -38,11 +47,22 @@ jobs:
       - name: Verify release workflow
         run: node --test .github/release-routing.test.mjs
 
+      - name: Check the affected selection
+        if: github.event_name == 'pull_request'
+        run: |
+          tasks="$(pnpm exec turbo run lint typecheck test --affected --dry=json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).tasks.filter(t=>t.command!=="<NONEXISTENT>").map(t=>t.taskId).join(" ")))')"
+          echo "Affected tasks: ${tasks:-none}"
+          changed="$(git diff --name-only "$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)" HEAD -- apps packages)"
+          if [ -z "$tasks" ] && [ -n "$changed" ]; then
+            echo "::error::Package source changed but turbo --affected selected no tasks"
+            exit 1
+          fi
+
       - name: Lint
-        run: pnpm run lint
+        run: pnpm run lint ${TURBO_AFFECTED:+"$TURBO_AFFECTED"}
 
       - name: Type check
-        run: pnpm run typecheck
+        run: pnpm run typecheck ${TURBO_AFFECTED:+"$TURBO_AFFECTED"}
 
       - name: Run tests
-        run: pnpm run test
+        run: pnpm run test ${TURBO_AFFECTED:+"$TURBO_AFFECTED"}
